@@ -23,8 +23,8 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc
 import os
 import json
 
-from model import ConformanceGNN, ConformanceLoss, count_parameters
-from dataset_generation import ConformanceDatasetGenerator
+from gnn_model import ConformanceGNN, ConformanceLoss, count_parameters
+from generate_dataset import ConformanceDatasetGenerator
 
 
 class ConformanceDataset(Dataset):
