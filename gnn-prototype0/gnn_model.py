@@ -163,6 +163,8 @@ class ConformanceGNN(nn.Module):
         # Takes: graph features + prefix + predicted transitions + enablement check
         self.conformance_classifier = nn.Sequential(
             nn.Linear(hidden_dim * 3 + num_transitions + num_transitions, hidden_dim * 2),
+            #         ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+            #         graph representation   predicted trans  enablement vector
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim * 2, hidden_dim),
@@ -262,8 +264,8 @@ class ConformanceGNN(nn.Module):
             enabled_transitions            # [num_transitions] - what's actually enabled
         ], dim=0)  # [hidden_dim * 3 + 2 * num_transitions]
         
-        conformance_logit = self.conformance_classifier(conformance_input.unsqueeze(0)).squeeze()
-        conformance = torch.sigmoid(conformance_logit)
+        conformance_logit = self.conformance_classifier(conformance_input.unsqueeze(0))  # [1, 1]
+        conformance = torch.sigmoid(conformance_logit).squeeze(0)  # [1] - keep as 1D tensor
         
         return next_transitions, conformance, enabled_transitions
 
@@ -295,11 +297,11 @@ class ConformanceLoss(nn.Module):
         Compute combined loss
         
         Args:
-            pred_transitions: Predicted transition probabilities
-            true_transitions: Ground truth transitions
-            pred_conformance: Predicted conformance probability
-            true_conformance: Ground truth conformance label
-            enabled_transitions: Which transitions are actually enabled (optional)
+            pred_transitions: Predicted transition probabilities [num_transitions]
+            true_transitions: Ground truth transitions [num_transitions]
+            pred_conformance: Predicted conformance probability [1] or scalar
+            true_conformance: Ground truth conformance label [1] or scalar
+            enabled_transitions: Which transitions are actually enabled (optional) [num_transitions]
         
         Returns:
             - total_loss
@@ -310,8 +312,10 @@ class ConformanceLoss(nn.Module):
         # Transition prediction loss
         transition_loss = F.binary_cross_entropy(pred_transitions, true_transitions)
         
-        # Conformance classification loss
-        conformance_loss = F.binary_cross_entropy(pred_conformance, true_conformance)
+        # Conformance classification loss - ensure both are same shape
+        pred_conf = pred_conformance.view(-1)  # Flatten to [1] or []
+        true_conf = true_conformance.view(-1)  # Flatten to [1] or []
+        conformance_loss = F.binary_cross_entropy(pred_conf, true_conf)
         
         # Enablement violation penalty
         # Penalize predicting transitions that are not enabled
@@ -378,13 +382,13 @@ if __name__ == '__main__':
         )
     
     print(f"\nOutput shapes:")
-    print(f"  Next transitions (predicted): {next_trans.shape}")
-    print(f"  Conformance: {conformance.shape}")
-    print(f"  Enabled transitions (actual): {enabled.shape}")
+    print(f"  Next transitions (predicted): {next_trans.shape} - expected: torch.Size([8])")
+    print(f"  Conformance: {conformance.shape} - expected: torch.Size([1])")
+    print(f"  Enabled transitions (actual): {enabled.shape} - expected: torch.Size([8])")
     
     print(f"\nPredicted transition probabilities: {next_trans}")
     print(f"Actually enabled transitions: {enabled}")
-    print(f"Conformance probability: {conformance.item():.4f}")
+    print(f"Conformance probability: {conformance}")  # Now shows [1] tensor
     
     # Check for violations
     violations = (next_trans > 0.5) & (enabled == 0)
@@ -394,7 +398,7 @@ if __name__ == '__main__':
     print("\nTesting loss function...")
     true_transitions = torch.zeros(8)
     true_transitions[0] = 1.0  # t1 should fire next
-    true_conformance = torch.tensor([1.0])
+    true_conformance = torch.tensor([1.0])  # Shape [1] to match model output
     
     loss_fn = ConformanceLoss(enablement_penalty=0.5)
     total_loss, trans_loss, conf_loss, enable_loss = loss_fn(
@@ -407,6 +411,11 @@ if __name__ == '__main__':
     print(f"  Transition loss: {trans_loss.item():.4f}")
     print(f"  Conformance loss: {conf_loss.item():.4f}")
     print(f"  Enablement violation loss: {enable_loss.item():.4f}")
+    
+    print("\nShape verification:")
+    print(f"  conformance shape: {conformance.shape}")
+    print(f"  true_conformance shape: {true_conformance.shape}")
+    print(f"  Shapes match: {conformance.shape == true_conformance.shape}")
     
     print("\n" + "=" * 60)
     print("Model architecture test completed successfully!")
