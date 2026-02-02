@@ -6,7 +6,8 @@ creating prefix windows with markings, and computing labels for:
 1. Next transition prediction (multi-label classification)
 2. Conformance classification (binary classification)
 """
-
+import sys 
+sys.path.append("/kaggle/working/GNN-classifer-for-an-event-stream")
 import torch
 import numpy as np
 from typing import List, Tuple, Dict, Set

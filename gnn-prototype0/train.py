@@ -9,6 +9,8 @@ This module implements:
 5. Visualization of training progress
 """
 
+import sys 
+sys.path.append("/kaggle/working/GNN-classifer-for-an-event-stream")
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader

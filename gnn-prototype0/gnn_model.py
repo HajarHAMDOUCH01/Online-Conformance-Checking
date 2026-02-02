@@ -11,7 +11,8 @@ The model uses:
 - Attention mechanisms for aggregation
 - Multi-task learning for both prediction tasks
 """
-
+import sys 
+sys.path.append("/kaggle/working/GNN-classifer-for-an-event-stream")
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
