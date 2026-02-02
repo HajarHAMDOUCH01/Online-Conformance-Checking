@@ -194,6 +194,8 @@ class ConformanceGNN(nn.Module):
             - conformance: [1] - conformance probability
         """
         # Embed inputs
+        place_features = place_features.view(-1, 1)
+        transition_features = transition_features.view(-1, 1)
         place_h = self.place_embedding(place_features)
         transition_h = self.transition_embedding(transition_features)
         prefix_h = self.prefix_embedding(prefix_encoding.unsqueeze(0))  # [1, hidden_dim]
