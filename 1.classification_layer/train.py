@@ -428,7 +428,7 @@ def main():
     print("=" * 80)
     
     # Load best model
-    checkpoint = torch.load(os.path.join(config['save_dir'], config['model_name']))
+    checkpoint = torch.load(os.path.join(config['save_dir'], config['model_name']), weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"Loaded best model from epoch {checkpoint['epoch'] + 1}")
     
