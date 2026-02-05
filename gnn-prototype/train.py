@@ -402,12 +402,6 @@ class Trainer:
         axes[2, 0].set_title('Conformance F1 Score')
         axes[2, 0].legend()
         axes[2, 0].grid(True)
-        
-        # NEW: Violation rate
-        train_viol = [m['violation_rate'] for m in self.history['train_metrics']]
-        val_viol = [m['violation_rate'] for m in self.history['val_metrics']]
-        axes[2, 1].plot(train_viol, label='Train')
-        axes[2, 1].plot(val_viol, label='Validation')
         axes[2, 1].set_xlabel('Epoch')
         axes[2, 1].legend()
         axes[2, 1].grid(True)
