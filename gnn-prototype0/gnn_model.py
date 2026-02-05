@@ -1,7 +1,7 @@
 """
-GNN Model with Sequential Conformance Checking - NO CHEATING VERSION
+GNN Model with Sequential Conformance Checking 
 
-Key improvement: Stage 2 checks each transition step-by-step without seeing
+Key improvement: Stage 2 checks each transition transition-by-transition without seeing
 the full enablement vector upfront. This forces the model to actually learn
 Petri net semantics instead of just comparing vectors.
 """
