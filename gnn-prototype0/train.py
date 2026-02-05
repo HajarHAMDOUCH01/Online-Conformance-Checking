@@ -87,7 +87,7 @@ class MetricsTracker:
     
     def update(self, pred_transitions, true_transitions, 
                pred_conformance, true_conformance, 
-               enabled_trans, loss, trans_loss, conf_loss, enable_loss):
+               enabled_trans, loss, trans_loss, conf_loss):
         """Update with batch predictions"""
         self.transition_preds.append(pred_transitions.detach().cpu())
         self.transition_labels.append(true_transitions.detach().cpu())
@@ -97,7 +97,6 @@ class MetricsTracker:
         self.losses.append(loss.item())
         self.transition_losses.append(trans_loss.item())
         self.conformance_losses.append(conf_loss.item())
-        self.enablement_losses.append(enable_loss.item())
     
     def compute(self, threshold: float = 0.5) -> Dict:
         """Compute metrics"""
@@ -127,14 +126,6 @@ class MetricsTracker:
         except:
             conf_auc = 0.0
         
-        # NEW: Enablement violation metrics
-        # How often does the model predict transitions that aren't enabled?
-        violations = (trans_preds > threshold) & (enabled == 0)
-        violation_rate = violations.sum() / (trans_preds.shape[0] * trans_preds.shape[1])
-        
-        # How well does the model respect enablement constraints?
-        enabled_accuracy = ((trans_preds > threshold) == (enabled > 0)).mean()
-        
         return {
             'loss': np.mean(self.losses),
             'transition_loss': np.mean(self.transition_losses),
@@ -145,14 +136,11 @@ class MetricsTracker:
             'conformance_precision': conf_precision,
             'conformance_recall': conf_recall,
             'conformance_f1': conf_f1,
-            'conformance_auc': conf_auc,
-            'violation_rate': violation_rate,
-            'enabled_accuracy': enabled_accuracy
+            'conformance_auc': conf_auc
         }
 
 
 class Trainer:
-    """Training manager for conformance GNN - CORRECTED"""
     
     def __init__(self, 
                  model: nn.Module,
@@ -161,7 +149,7 @@ class Trainer:
                  optimizer: torch.optim.Optimizer,
                  loss_fn: ConformanceLoss,
                  device: str = 'cpu',
-                 checkpoint_dir: str = './checkpoints'):
+                 checkpoint_dir: str = '/kaggle/working/checkpoints'):
         
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -336,24 +324,18 @@ class Trainer:
             print(f"  Total Loss: {train_metrics['loss']:.4f}")
             print(f"    - Transition Loss: {train_metrics['transition_loss']:.4f}")
             print(f"    - Conformance Loss: {train_metrics['conformance_loss']:.4f}")
-            # print(f"    - Enablement Loss: {train_metrics['enablement_loss']:.4f}")
             print(f"  Transition Acc: {train_metrics['transition_accuracy']:.4f}")
             print(f"  Conformance Acc: {train_metrics['conformance_accuracy']:.4f}")
             print(f"  Conformance F1: {train_metrics['conformance_f1']:.4f}")
-            print(f"  Violation Rate: {train_metrics['violation_rate']:.4f}")
-            # print(f"  Enabled Accuracy: {train_metrics['enabled_accuracy']:.4f}")
             
             print(f"\nVal Metrics:")
             print(f"  Total Loss: {val_metrics['loss']:.4f}")
             print(f"    - Transition Loss: {val_metrics['transition_loss']:.4f}")
             print(f"    - Conformance Loss: {val_metrics['conformance_loss']:.4f}")
-            # print(f"    - Enablement Loss: {val_metrics['enablement_loss']:.4f}")
             print(f"  Transition Acc: {val_metrics['transition_accuracy']:.4f}")
             print(f"  Conformance Acc: {val_metrics['conformance_accuracy']:.4f}")
             print(f"  Conformance F1: {val_metrics['conformance_f1']:.4f}")
             print(f"  Conformance AUC: {val_metrics['conformance_auc']:.4f}")
-            print(f"  Violation Rate: {val_metrics['violation_rate']:.4f}")
-            # print(f"  Enabled Accuracy: {val_metrics['enabled_accuracy']:.4f}")
             
             # Save checkpoint
             is_best = val_metrics['loss'] < self.best_val_loss
@@ -381,11 +363,9 @@ class Trainer:
         # Component losses
         train_trans_loss = [m['transition_loss'] for m in self.history['train_metrics']]
         train_conf_loss = [m['conformance_loss'] for m in self.history['train_metrics']]
-        train_enable_loss = [m['enablement_loss'] for m in self.history['train_metrics']]
         
         axes[0, 1].plot(train_trans_loss, label='Transition')
         axes[0, 1].plot(train_conf_loss, label='Conformance')
-        axes[0, 1].plot(train_enable_loss, label='Enablement')
         axes[0, 1].set_xlabel('Epoch')
         axes[0, 1].set_ylabel('Loss')
         axes[0, 1].set_title('Training Loss Components')
@@ -431,8 +411,6 @@ class Trainer:
         axes[2, 1].plot(train_viol, label='Train')
         axes[2, 1].plot(val_viol, label='Validation')
         axes[2, 1].set_xlabel('Epoch')
-        axes[2, 1].set_ylabel('Violation Rate')
-        # axes[2, 1].set_title('Enablement Violation Rate')
         axes[2, 1].legend()
         axes[2, 1].grid(True)
         
