@@ -185,7 +185,6 @@ class Trainer:
         self.best_val_loss = float('inf')
     
     def train_epoch(self) -> Dict:
-        """Train for one epoch - CORRECTED"""
         self.model.train()
         metrics_tracker = MetricsTracker()
         
@@ -215,10 +214,10 @@ class Trainer:
                 )
                 
                 # Compute loss with enablement checking
-                loss, trans_loss, conf_loss, enable_loss = self.loss_fn(
+                loss, trans_loss, conf_loss = self.loss_fn(
                     pred_trans, next_transitions[i],
                     pred_conf, is_conformant[i],
-                    enabled  # IMPORTANT: Pass enabled transitions
+                    enabled  
                 )
                 
                 total_loss += loss
@@ -228,7 +227,7 @@ class Trainer:
                     pred_trans.unsqueeze(0), next_transitions[i].unsqueeze(0),
                     pred_conf.unsqueeze(0), is_conformant[i].unsqueeze(0),
                     enabled.unsqueeze(0),
-                    loss, trans_loss, conf_loss, enable_loss
+                    loss, trans_loss, conf_loss
                 )
             
             # Backward pass
@@ -243,7 +242,6 @@ class Trainer:
         return metrics_tracker.compute()
     
     def validate(self) -> Dict:
-        """Validate the model - CORRECTED"""
         self.model.eval()
         metrics_tracker = MetricsTracker()
         
@@ -261,7 +259,6 @@ class Trainer:
                 batch_size = place_features.size(0)
                 
                 for i in range(batch_size):
-                    # TWO-STAGE FORWARD PASS
                     pred_trans, pred_conf, enabled = self.model(
                         place_features[i],
                         transition_features[i],
@@ -271,10 +268,10 @@ class Trainer:
                     )
                     
                     # Compute loss
-                    loss, trans_loss, conf_loss, enable_loss = self.loss_fn(
+                    loss, trans_loss, conf_loss = self.loss_fn(
                         pred_trans, next_transitions[i],
                         pred_conf, is_conformant[i],
-                        enabled  # IMPORTANT: Pass enabled transitions
+                        enabled  
                     )
                     
                     # Track metrics
@@ -282,7 +279,7 @@ class Trainer:
                         pred_trans.unsqueeze(0), next_transitions[i].unsqueeze(0),
                         pred_conf.unsqueeze(0), is_conformant[i].unsqueeze(0),
                         enabled.unsqueeze(0),
-                        loss, trans_loss, conf_loss, enable_loss
+                        loss, trans_loss, conf_loss
                     )
         
         return metrics_tracker.compute()

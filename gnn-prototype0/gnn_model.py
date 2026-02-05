@@ -379,13 +379,13 @@ class ConformanceLoss(nn.Module):
     def __init__(self, 
                  transition_weight: float = 1.0,
                  conformance_weight: float = 1.0,
-                 enablement_penalty: float = 0.0 # has to be zero if we want a model to not learn to predict conformant always
+                #  enablement_penalty: float = 0.0 # has to be zero if we want a model to not learn to predict conformant always
                  ):
         super(ConformanceLoss, self).__init__()
         
         self.transition_weight = transition_weight
         self.conformance_weight = conformance_weight
-        self.enablement_penalty = enablement_penalty
+        # self.enablement_penalty = enablement_penalty
     
     def forward(self, pred_transitions, true_transitions, 
                 pred_conformance, true_conformance,
@@ -404,18 +404,18 @@ class ConformanceLoss(nn.Module):
         # training valid against non-valid sequence
         conformance_loss = F.binary_cross_entropy(pred_conf, true_conf)
         
-        enablement_violation_loss = torch.tensor(0.0, device=pred_transitions.device)
-        if enabled_transitions is not None:
-            violations = pred_transitions * (1 - enabled_transitions)
-            enablement_violation_loss = violations.mean()
+        # enablement_violation_loss = torch.tensor(0.0, device=pred_transitions.device)
+        # if enabled_transitions is not None:
+            # violations = pred_transitions * (1 - enabled_transitions)
+            # enablement_violation_loss = violations.mean()
         
         total_loss = (
             self.transition_weight * transition_loss + 
-            self.conformance_weight * conformance_loss +
-            self.enablement_penalty * enablement_violation_loss
+            self.conformance_weight * conformance_loss
+            # self.enablement_penalty * enablement_violation_loss
         )
         
-        return total_loss, transition_loss, conformance_loss, enablement_violation_loss
+        return total_loss, transition_loss, conformance_loss
 
 
 def count_parameters(model: nn.Module) -> int:
