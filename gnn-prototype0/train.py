@@ -336,24 +336,24 @@ class Trainer:
             print(f"  Total Loss: {train_metrics['loss']:.4f}")
             print(f"    - Transition Loss: {train_metrics['transition_loss']:.4f}")
             print(f"    - Conformance Loss: {train_metrics['conformance_loss']:.4f}")
-            print(f"    - Enablement Loss: {train_metrics['enablement_loss']:.4f}")
+            # print(f"    - Enablement Loss: {train_metrics['enablement_loss']:.4f}")
             print(f"  Transition Acc: {train_metrics['transition_accuracy']:.4f}")
             print(f"  Conformance Acc: {train_metrics['conformance_accuracy']:.4f}")
             print(f"  Conformance F1: {train_metrics['conformance_f1']:.4f}")
             print(f"  Violation Rate: {train_metrics['violation_rate']:.4f}")
-            print(f"  Enabled Accuracy: {train_metrics['enabled_accuracy']:.4f}")
+            # print(f"  Enabled Accuracy: {train_metrics['enabled_accuracy']:.4f}")
             
             print(f"\nVal Metrics:")
             print(f"  Total Loss: {val_metrics['loss']:.4f}")
             print(f"    - Transition Loss: {val_metrics['transition_loss']:.4f}")
             print(f"    - Conformance Loss: {val_metrics['conformance_loss']:.4f}")
-            print(f"    - Enablement Loss: {val_metrics['enablement_loss']:.4f}")
+            # print(f"    - Enablement Loss: {val_metrics['enablement_loss']:.4f}")
             print(f"  Transition Acc: {val_metrics['transition_accuracy']:.4f}")
             print(f"  Conformance Acc: {val_metrics['conformance_accuracy']:.4f}")
             print(f"  Conformance F1: {val_metrics['conformance_f1']:.4f}")
             print(f"  Conformance AUC: {val_metrics['conformance_auc']:.4f}")
             print(f"  Violation Rate: {val_metrics['violation_rate']:.4f}")
-            print(f"  Enabled Accuracy: {val_metrics['enabled_accuracy']:.4f}")
+            # print(f"  Enabled Accuracy: {val_metrics['enabled_accuracy']:.4f}")
             
             # Save checkpoint
             is_best = val_metrics['loss'] < self.best_val_loss
@@ -367,7 +367,6 @@ class Trainer:
         print("=" * 60)
     
     def plot_history(self, save_path: str = None):
-        """Plot training history - ENHANCED"""
         fig, axes = plt.subplots(3, 2, figsize=(15, 15))
         
         # Loss
@@ -433,7 +432,7 @@ class Trainer:
         axes[2, 1].plot(val_viol, label='Validation')
         axes[2, 1].set_xlabel('Epoch')
         axes[2, 1].set_ylabel('Violation Rate')
-        axes[2, 1].set_title('Enablement Violation Rate')
+        # axes[2, 1].set_title('Enablement Violation Rate')
         axes[2, 1].legend()
         axes[2, 1].grid(True)
         
@@ -465,7 +464,6 @@ def main():
         # Loss weights
         'transition_weight': 1.0,
         'conformance_weight': 1.0,
-        'enablement_penalty': 0.5  # NEW: penalty for predicting disabled transitions
     }
     
     print("Configuration:")
@@ -530,8 +528,7 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
     loss_fn = ConformanceLoss(
         transition_weight=config['transition_weight'],
-        conformance_weight=config['conformance_weight'],
-        enablement_penalty=config['enablement_penalty']
+        conformance_weight=config['conformance_weight']
     )
     
     # Create trainer
