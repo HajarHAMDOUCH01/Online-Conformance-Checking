@@ -37,7 +37,3 @@ Petri nets are naturally heterogeneous graphs. Multi-layer message passing captu
 - **Transition features**: Enablement flag + activity one-hot encoding
 - **Prefix encoding**: Recent activity sequence (window size: 3)
 - **Graph structure**: Pre/post arcs defining Petri net topology
-
-## Current Limitation
-
-The checker doesn't update markings after detecting violations, so it only learns to catch the first deviation rather than cascading effects. Future work could implement "what-if" marking updates to learn downstream impacts.
