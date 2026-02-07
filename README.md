@@ -1,6 +1,6 @@
 # GNN-Based Sequential Conformance Checking
 
-## ::core-idea::
+## core-idea
 A two-stage neural + symbolic architecture for **online conformance checking** that:
 1. Learns a latent process state using a **Graph Neural Network (GNN)**.
 2. Enforces **Petri net semantics** using a sequential verifier.
@@ -9,7 +9,7 @@ This reframes conformance from *exact optimization* to *approximate neural infer
 
 ---
 
-## ::architecture:: Two-Stage Predict–Then–Verify
+## architecture Two-Stage Predict–Then–Verify
 
 ### Stage 1 — Prediction
 **Input:**  
@@ -37,7 +37,7 @@ Each predicted transition is:
 
 ---
 
-## ::gnn-design:: Heterogeneous Graph Convolution
+## gnn-design Heterogeneous Graph Convolution
 
 ### Node Types
 - **Place nodes:** token counts (marking)
@@ -56,7 +56,7 @@ This enables **3-hop dependency capture**, allowing the model to learn:
 
 ---
 
-## ::state-of-the-art:: Comparison with HMMConf (Lee et al., 2021)
+## state-of-the-art Comparison with HMMConf (Lee et al., 2021)
 
 | Aspect | HMMConf | GNN Method |
 |--------|--------|-----------|
@@ -72,7 +72,7 @@ This enables **3-hop dependency capture**, allowing the model to learn:
 
 ---
 
-## ::state-of-the-art:: Relation to Prefix Alignments
+## state-of-the-art Relation to Prefix Alignments
 
 Prefix alignments (van Zelst et al., 2017):
 
@@ -87,7 +87,7 @@ This trades optimality for speed.
 
 ---
 
-## ::state-of-the-art:: Deep Learning Landscape (2025)
+## state-of-the-art Deep Learning Landscape (2025)
 
 | Paradigm | Strength |
 |----------|---------|
@@ -101,7 +101,7 @@ Sequence models flatten structure.
 
 ---
 
-## ::mechanism:: Graph Attention
+## mechanism Graph Attention
 
 For each node:
 
@@ -114,7 +114,7 @@ This learns which places are **critical** for enabling transitions.
 
 ---
 
-## ::temporal-context:: Prefix Encoding
+## temporal-context Prefix Encoding
 
 - 3 recent activities  
 - 6 activity types  
@@ -128,7 +128,7 @@ Conceptually similar to:
 
 ---
 
-## ::strengths::
+## strengths
 
 - Structural inductive bias (Petri net topology)
 - Hard semantic enforcement
@@ -137,7 +137,7 @@ Conceptually similar to:
 
 ---
 
-## ::limitations::
+## limitations
 
 - No cascading simulation after violation
 - Fixed penalty weights (0.1)
@@ -146,7 +146,7 @@ Conceptually similar to:
 
 ---
 
-## ::maturity::
+## maturity
 
 | Dimension | Status |
 |-----------|--------|
@@ -161,7 +161,7 @@ Requires:
 
 ---
 
-## ::thesis::
+## thesis
 This method positions **GNNs + Petri net semantics** as a new hybrid paradigm for online conformance checking:
 > **Neural orientation + symbolic verification**  
 > Fast, interpretable, structure-aware, but approximate.
