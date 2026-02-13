@@ -193,7 +193,12 @@ class SequentialConformanceChecker(nn.Module):
             if not is_enabled:
                 step_score = step_score * 0.1  
 
+
             # TO DOOOOO : think how to estimate a marking for a non-conform transition (wether coming from a conformant state or non-conformant state)
+            # do something that will let you estimate the least effort required to go back to a conformant alignement and consider the cose and then continue the transitions next
+            # only then you can classify
+
+
             # it would likely be the cause of why validation loss is unstable ... !!!
             step_scores.append(step_score)
             step_info.append({
