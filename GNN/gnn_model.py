@@ -2,7 +2,7 @@
 GNN Model with Sequential Conformance Checking 
 
 Key improvement: Stage 2 checks each transition transition-by-transition without seeing
-the full enablement vector upfront. This forces the model to actually learn
+the full enablement vector upfront (concat or attention for example). This forces the model to actually learn
 Petri net semantics instead of just comparing vectors.
 """
 import sys 
@@ -82,11 +82,6 @@ class HeteroGraphConv(nn.Module):
 
 
 class SequentialConformanceChecker(nn.Module):
-    """
-    Sequential conformance checker - examines each transition step-by-step
-    -> NO CHEATING: Doesn't see the full enablement vector upfront 
-    """
-    
     def __init__(self, hidden_dim: int, num_transitions: int, dropout: float = 0.3):
         super(SequentialConformanceChecker, self).__init__()
         
@@ -242,10 +237,11 @@ class SequentialConformanceChecker(nn.Module):
 # we want a model that predicts which transitions will fire next in the process graph 
 # and checks if they are valid 
 class ConformanceGNN(nn.Module):
-    """
-    Two-Stage GNN with Sequential Conformance Checking
-    """
-    
+
+    """correctness check : """
+
+
+
     def __init__(self, 
                 place_feature_dim: int = 1, # token count of a place node
                 transition_feature_dim: int = 8, # one-hot encoding of the transition
@@ -277,6 +273,7 @@ class ConformanceGNN(nn.Module):
         self.transition_pooling = nn.Linear(hidden_dim, hidden_dim)
         
         # STAGE 1: Transition predictor
+        # does this overfit ??? check it !!!!
         self.transition_predictor = nn.Sequential(
             nn.Linear(hidden_dim * 3, hidden_dim * 2), # place pooling + transition pooling + prefix encoding
             nn.ReLU(),
@@ -292,8 +289,7 @@ class ConformanceGNN(nn.Module):
             hidden_dim, num_transitions, dropout
         )
     
-    def compute_enabled_transitions(self, place_features: torch.Tensor,
-                                   pre_edge_index: torch.Tensor) -> torch.Tensor:
+    def compute_enabled_transitions(self, place_features: torch.Tensor, pre_edge_index: torch.Tensor) -> torch.Tensor:
         """Compute enablement vector for ALL transitions"""
         num_transitions = self.num_transitions
         enabled = torch.ones(num_transitions, device=place_features.device)
@@ -342,6 +338,8 @@ class ConformanceGNN(nn.Module):
         # mean across all places features => [1, 64]
         place_global = torch.mean(self.place_pooling(place_h), dim=0, keepdim=True)
         transition_global = torch.mean(self.transition_pooling(transition_h), dim=0, keepdim=True)
+        
+        # this should not be done like this !!!!!!!!
         combined = torch.cat([place_global, transition_global, prefix_h], dim=1)
         
         # STAGE 1: Predict transitions
@@ -398,6 +396,7 @@ class ConformanceLoss(nn.Module):
         # for each transition in the predicted sequence we compare the pedicted probability to the label
         # then avg across all transitions
         """
+        example : 
         pedicted: [0.1, 0.8, 0.05, 0.9, 0.2, 0.6, 0.3, 0.1]
         True   : [0,   1,   0,    1,   0,   1,   0,   0  ]
         """
@@ -421,10 +420,7 @@ def count_parameters(model: nn.Module) -> int:
 
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("Sequential Conformance GNN - No Cheating Version")
-    print("=" * 60)
-    
+
     model = ConformanceGNN(
         place_feature_dim=1,
         transition_feature_dim=8,

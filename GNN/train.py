@@ -141,13 +141,13 @@ class MetricsTracker:
 class Trainer:
     
     def __init__(self, 
-                 model: nn.Module,
-                 train_loader: DataLoader,
-                 val_loader: DataLoader,
-                 optimizer: torch.optim.Optimizer,
-                 loss_fn: ConformanceLoss,
-                 device: str = 'cpu',
-                 checkpoint_dir: str = '/kaggle/working/checkpoints'):
+                model: nn.Module,
+                train_loader: DataLoader,
+                val_loader: DataLoader,
+                optimizer: torch.optim.Optimizer,
+                loss_fn: ConformanceLoss,
+                device: str = 'cuda',
+                checkpoint_dir: str = '/kaggle/working/checkpoints'):
         
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -300,6 +300,11 @@ class Trainer:
         print(f"Training samples: {len(self.train_loader.dataset)}")
         print(f"Validation samples: {len(self.val_loader.dataset)}")
         print("=" * 60)
+
+        ########## temporary checking if trans mlp is oerfitting #######
+        train_trans_losses = []
+        val_trans_losses = []
+        #################################################################
         
         for epoch in range(1, num_epochs + 1):
             print(f"\nEpoch {epoch}/{num_epochs}")
@@ -311,6 +316,21 @@ class Trainer:
             # Validate
             val_metrics = self.validate()
             
+
+            train_trans_losses.append(train_metrics['trans_loss'])
+            val_trans_losses.append(val_metrics['trans_loss'])
+
+            if epoch == num_epochs - 1:
+                plt.figure(figsize=(10,6))
+                plt.plot(train_trans_losses, label='train transition loss')
+                plt.plot(val_trans_losses, label='validation transition loss')
+                plt.xlabel('Epoch')
+                plt.ylabel('transition loss')
+                plt.legend()
+                plt.grid(True)
+                plt.savefig(f'trans_loss_epoch{epoch}.png')
+                plt.close()
+
             # Store history
             self.history['train_loss'].append(train_metrics['loss'])
             self.history['val_loss'].append(val_metrics['loss'])
