@@ -317,8 +317,8 @@ class Trainer:
             val_metrics = self.validate()
             
 
-            train_trans_losses.append(train_metrics['trans_loss'])
-            val_trans_losses.append(val_metrics['trans_loss'])
+            train_trans_losses.append(train_metrics['transition_loss'])
+            val_trans_losses.append(val_metrics['transition_loss'])
 
             if epoch == num_epochs - 1:
                 plt.figure(figsize=(10,6))
