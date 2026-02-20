@@ -148,7 +148,7 @@ for marking, transitions in reachability_graph.items():
         dst_marking_idx = marking_to_idx[next_marking]
         t_idx = t_name_to_idx[t_name]
         
-        reachability_tensor[t_idx, src_marking_idx, dst_marking_idx] = angle 
-        reachability_tensor[t_idx, dst_marking_idx, src_marking_idx] = -angle # to doo : verify that this never happens 
+        reachability_tensor[t_idx, src_marking_idx, dst_marking_idx] = -angle 
+        reachability_tensor[t_idx, dst_marking_idx, src_marking_idx] = angle # to doo : verify that this never happens 
 
-print("\nReachability Tensor :", reachability_tensor)
+# print("\nReachability Tensor :", reachability_tensor)
