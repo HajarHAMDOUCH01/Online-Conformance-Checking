@@ -3,7 +3,14 @@ Input v_source : Un marquage quelconque du reachability graph.
 Input v_target : Un autre marquage atteignable depuis v_source.
 Label (Cible) : Le vecteur alpha idéal qui représente le chemin le plus court.
 """
-from reachability_graph_construction import *
+
+
+# dataset for example 2 : 
+# Total states: 139
+# Train: 2208 | Test: 1300
+
+
+from reachability_graph import *
 import heapq
 
 def get_shortest_path_sequence(graph, start_node, end_node, t_name_to_idx):

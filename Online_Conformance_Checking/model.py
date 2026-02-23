@@ -22,6 +22,11 @@ import torch.nn.functional as F
 class PetriNetAlignmentPredictor(nn.Module):
     def __init__(self, reachability_tensor):
         super().__init__()
+
+        # the omegas tensor is the angle (same angle : pi / 2) for transitions between markings 
+        # this is the representation of teh graph 
+        # there is no latent representation of the peti net ...
+
         self.register_buffer('omegas', reachability_tensor)
         self.num_m = reachability_tensor.shape[1]
         self.num_t = reachability_tensor.shape[0]

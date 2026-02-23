@@ -1,4 +1,8 @@
+import sys 
+sys.path.append("Online-conformance-checking")
 from collections import deque
+
+from example_2.graph_example_2 import *
 
 def build_reachability_graph(net):
     graph = {}  # {marking: [(transition, mode, next_marking)]}
@@ -60,6 +64,7 @@ test with different process graphs from different datasets
 do batching with masking 
 fix code -> pytorch things
 think about edge cases 
+check if it works without indexing transitions and places 
 """
 
 import torch
