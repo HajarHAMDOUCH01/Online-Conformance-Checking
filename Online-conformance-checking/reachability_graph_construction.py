@@ -156,3 +156,17 @@ def build_reachability_graph_tensor(num_t, num_m, reachability_graph):
 
 reachability_tensor = build_reachability_graph_tensor(num_t=num_t, num_m=num_m, reachability_graph=reachability_graph)
 # print(f"reachability tensor : {reachability_tensor}")
+
+
+transition_to_enabled_markings = {}
+
+for marking, transitions in reachability_graph.items():
+    for t_name, mode, next_marking in transitions:
+        if t_name not in transition_to_enabled_markings:
+            transition_to_enabled_markings[t_name] = []
+        transition_to_enabled_markings[t_name].append({
+            'from': marking,
+            'to':   next_marking,
+            'from_idx': marking_to_idx[marking],
+            'to_idx':   marking_to_idx[next_marking]
+        })

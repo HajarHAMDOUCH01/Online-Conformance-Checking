@@ -1,76 +1,73 @@
 import torch.optim as optim
-import torch 
+import torch
 import torch.nn.functional as F
 from model import PetriNetAlignmentPredictor
-
-import torch.optim as optim
-
 from reachability_graph_construction import *
 from dataset import *
 
 model = PetriNetAlignmentPredictor(reachability_tensor)
-optimizer = optim.Adam(model.parameters(), lr=0.0018)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-import torch.optim as optim
-import torch 
-import torch.nn.functional as F
-
-# try with batch size = 1 in training and inference : chaque observation de la trace
-
-def training_step(model, v_src, v_tgt, y_true_seq, epoch):
+def training_step(model, X_src_train, X_tgt_train, y_alphas_train, epoch):
     model.train()
-    optimizer.zero_grad()
-    train_data_length = len(v_src)
-    for i in range(train_data_length):
-        v_src_element = v_src[i:i+1]
-        v_tgt_element = v_tgt[i:i+1]
-        v_src_element = v_src_element.squeeze(0)
-        v_tgt_element = v_tgt_element.squeeze(0)
-        # v_pred: [Batch, Num_M], pred_seq: [Batch, Steps, Num_T]
-        v_pred, pred_seq = model(v_src_element, v_tgt_element)
-        break
-        
-        loss_alpha = F.mse_loss(pred_seq, y_true_seq)# to do : this should not be mse and loss should not be for total sequence
-        
-        total_loss = loss_alpha
-        
-        total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-        optimizer.step()
-        
-        return total_loss.item()
+    epoch_loss = 0
 
+    tau = max(0.1, 1.0 - epoch * 0.005)  
 
-# Boucle d'entraînement
-epochs = 1 
+    for i in range(len(X_src_train)):
+        optimizer.zero_grad()
+
+        v_s = X_src_train[i:i+1]
+        v_t = X_tgt_train[i:i+1]
+        y_true = y_alphas_train[i]
+
+        if y_true.dim() == 3:
+            y_true = y_true.squeeze(1)   # → [L, num_t]
+
+        target_indices = y_true.argmax(dim=-1).long()  # [L]
+
+        v_pred, pred_seq = model(v_s, v_t, training=True, tau=tau)
+
+        min_len = min(pred_seq.size(0), target_indices.size(0))
+
+        if min_len > 0:
+            loss_ce  = F.cross_entropy(pred_seq[:min_len], target_indices[:min_len])
+            loss_pos = F.mse_loss(v_pred, v_t)
+            loss = loss_ce + 0.1 * loss_pos
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            epoch_loss += loss.item()
+
+    return epoch_loss / len(X_src_train)
+
+epochs = 200
 for epoch in range(epochs):
-    loss = training_step(model, X_src_train, X_tgt_train, y_alphas_train, epoch)
-    
-    if epoch % 100 == 0:
-        print(f"Epoch {epoch:4d} | Loss: {loss:.6f} ")
+    avg_loss = training_step(model, X_src_train, X_tgt_train, y_alphas_train, epoch)  
+    if epoch % 10 == 0:
+        print(f"Epoch {epoch:4d} | Loss: {avg_loss:.6f}")
 
-
+# Évaluation
 model.eval()
 with torch.no_grad():
     for i in range(len(X_src_test)):
         v_src_test = X_src_test[i:i+1]
         v_tgt_test = X_tgt_test[i:i+1]
-        
-        # v_pred est le résultat de : R_n * ... * R_1 * v_src
-        v_pred, pred_alphas = model(v_src_test, v_tgt_test)
-        
+
+        v_pred, pred_logits = model(v_src_test, v_tgt_test, training=False)
+
+        src_idx  = v_src_test.argmax().item()
+        tgt_idx  = v_tgt_test.argmax().item()
+        pred_idx = v_pred.argmax().item()
+
         print(f"\n--- Test Chemin {i} ---")
-        print(f"source (Index) : {v_src_test.argmax().item()}")
-        print(f"Cible réelle (Index) : {v_tgt_test.argmax().item()}")
-        print(f"Prédit (Index)       : {v_pred.argmax().item()}")
-        
-        if pred_alphas.dim() > 2:
-            for step in range(pred_alphas.size(1)):
-                step_alphas = pred_alphas[0, step]
-                top_t = step_alphas.argmax().item()
-                if step_alphas[top_t] > 0.2:
-                    print(f"  Pas {step+1}: Transition t{top_t+1} (alpha={step_alphas[top_t]:.2f})")
-                break
-        else:
-            print(f"Alphas globaux : {pred_alphas.squeeze().tolist()}")
-        break
+        print(f"Source (Index) : {src_idx}")
+        print(f"Cible  (Index) : {tgt_idx}")
+        print(f"Prédit (Index) : {pred_idx}  {'SUCCESS' if pred_idx == tgt_idx else 'FAILED'}")
+
+        for step in range(pred_logits.size(0)):
+            probs = F.softmax(pred_logits[step], dim=-1)
+            top_t = probs.argmax().item()
+            conf  = probs[top_t].item()
+            if conf > 0.1:
+                print(f"Pas {step+1}: Transition t{top_t+1} (confiance={conf:.2f})")
