@@ -53,15 +53,6 @@ t_name_to_idx = {name: i for i, name in enumerate(all_transition_names)}
 num_m = len(all_markings)
 num_t = len(all_transition_names)
 
-"""
-to doo : 
-edge case : if t6 didn't exist how the model can learn to find an alignement for a trace like : t1, t2, t1, t3, ... , it has to finish the process .. ? 
-test with different process graphs from different datasets 
-do batching with masking 
-fix code -> pytorch things
-think about edge cases 
-"""
-
 import torch
 import math
 

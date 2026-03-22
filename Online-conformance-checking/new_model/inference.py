@@ -2,7 +2,7 @@ import torch.optim as optim
 import torch
 import torch.nn.functional as F
 from model import PetriNetAlignmentPredictor
-from reachability_graph_construction import *
+from reachability_graph import *
 from dataset import *
 from train import *
 

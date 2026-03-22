@@ -1,0 +1,7 @@
+datasets/
+├── sepsis/
+│   ├── sepsis_full_log.xes          event log complet (1050 cases)
+│   ├── sepsis_training_log.xes      event log d'entraînement
+│   └── sepsis_reference_model.pnml  modèle Petri net de référence
+└── synthetic/
+    └── log.csv                      résultats bruts synthétiques (1.8GB)
