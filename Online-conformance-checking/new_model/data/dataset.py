@@ -5,6 +5,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import pandas as pd
+import pickle
 
 ROOT_DIR = 'C:\\Users\\LENONVO\\OneDrive\\Desktop\\sujet-CRAN\\datasets'
 
@@ -18,6 +19,7 @@ def import_petrinet_model(pnml_file_path, return_reachability_graph=False):
 def get_reachability_graph(petrinet, mi, mf):
     reachability_graph = pm4py.convert_to_reachability_graph(petrinet, mi, mf)
     print("\nlen(reachability_graph.states)\n", len(reachability_graph.states))
+    return reachability_graph
 
 def import_event_log(event_log_file_path):
     event_log = pm4py.read_xes(event_log_file_path)
@@ -54,8 +56,32 @@ def vizualise_petrinet(petrinet: PetriNet):
     plt.tight_layout()
     plt.show()
 
+
+def visualize_reachability_graph(reachability_graph):
+    G = nx.DiGraph()
+
+    for state in reachability_graph.states:
+        G.add_node(state.name)
+
+    for transition in reachability_graph.transitions:
+        G.add_edge(transition.from_state.name, transition.to_state.name, label=transition.name)
+
+    pos = nx.spring_layout(G, seed=42, k=3)
+
+    plt.figure(figsize=(24, 16))
+    nx.draw_networkx_nodes(G, pos, node_color="orange", node_size=200)
+    nx.draw_networkx_edges(G, pos, arrows=True, arrowsize=8, width=0.5, alpha=0.5)
+
+    plt.title(f"Reachability Graph ({len(reachability_graph.states)} states)")
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
+
 petrinet, mi, mf = import_petrinet_model(f"{ROOT_DIR}\\spesis\\spesis_reference_model.pnml")
-get_reachability_graph(petrinet, mi, mf)
+vizualise_petrinet(petrinet)
+reachability_graph = get_reachability_graph(petrinet, mi, mf)
+visualize_reachability_graph(reachability_graph)
+# get_reachability_graph(petrinet, mi, mf)
 # 1050 cases , 15214 events 
 # sur 18 months 
 # 16 unique activities
@@ -81,6 +107,76 @@ train_event_log = import_event_log(f"{ROOT_DIR}\\spesis\\spesis_training_log.xes
 #         "Visited_nodes", "Upper_bound", "Window_size"
 #     ]
 # )
+
+#this is results of the orinal reference model and the base log
+
+# sepsis_results = {}
+# for w in [1, 2, 3, 4, 5, 'infinite']:
+#     df = pd.read_csv(
+#         f"{ROOT_DIR}\\spesis\\window_{w}.csv",
+#         sep=";",
+#         skiprows=1,  # sauter la ligne header du fichier
+#         names=["prefix_length", "cost", "cost_delta", "cost_delta_full",
+#                "enqueued_nodes", "visited_nodes", "traversed_edges",
+#                "avg_queue_size", "search_time", "window"]
+#     )
+#     # convertir en numérique
+#     for col in ["prefix_length", "cost", "cost_delta", "cost_delta_full",
+#                 "enqueued_nodes", "visited_nodes", "traversed_edges",
+#                 "avg_queue_size", "search_time"]:
+#         df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+#     sepsis_results[w] = df
+#     # print(f"\n=== window_{w} === Shape: {df.shape}")
+#     # print(df.head(3))
+
+
+# # unique trace variants in the full_log.xes
+# trace_variants_df = (
+#     base_event_log
+#     .sort_values(["case:concept:name", "time:timestamp"])
+#     .groupby("case:concept:name")["concept:name"]
+#     .apply(tuple)
+#     .reset_index()
+#     .rename(columns={"concept:name":"trace"})
+# )
+# unique_traces = trace_variants_df.drop_duplicates(subset="trace").reset_index(drop=True)
+# print("unique traces : ", len(unique_traces))
+# print(unique_traces.head(5))
+# # with open(f"{ROOT_DIR}\\spesis\\unique_traces.pkl", "wb") as f:
+# #     pickle.dump(unique_traces, f)
+# # unique_traces.to_csv(f"{ROOT_DIR}\\spesis\\unique_traces.csv", index=False)
+
+# # creation of the stream of unique events :
+# unique_events = (
+#     base_event_log[["case:concept:name", "concept:name", "time:timestamp"]]
+#     .sort_values(["case:concept:name", "time:timestamp"])
+#     .reset_index(drop=True)
+# )
+# # Garder seulement les events des traces uniques
+# unique_case_ids = unique_traces["case:concept:name"].tolist()
+# unique_events = unique_events[unique_events["case:concept:name"].isin(unique_case_ids)].reset_index(drop=True)
+
+# print("Nombre d'événements uniques:", len(unique_events))  # 13775
+
+# # Associer avec window_infinite comme ground truth
+# df_inf = sepsis_results['infinite'].copy()
+# df_inf = df_inf.reset_index(drop=True)
+
+# ground_truth = pd.concat([unique_events, df_inf], axis=1)
+# print(ground_truth.head(10))
+
+# ground_truth.to_csv(f"{ROOT_DIR}\\spesis\\ground_truth.csv", index=False)
+"""
+Dans ground_truth.csv
+Chaque ligne contient :
+
+case:concept:name → case ID
+concept:name → activité
+time:timestamp → timestamp
+prefix_length, cost, cost_delta, cost_delta_full → ground truth prefix-alignments
+enqueued_nodes, visited_nodes, etc. → métriques de performance
+"""
 
 # print("synthetic_results.attrs : ", synthetic_results.attrs)
 # print("synthetic_results.values : ", synthetic_results.values)
@@ -114,7 +210,3 @@ train_event_log = import_event_log(f"{ROOT_DIR}\\spesis\\spesis_training_log.xes
 # print("\nNombre de cas:", train_event_log["case:concept:name"].nunique())
 # print("\nNombre d'événements:", len(train_event_log))
 # print("\nPériode:", train_event_log["time:timestamp"].min(), "→", train_event_log["time:timestamp"].max())
-
-# train_stream = train_event_log[["case:concept:name", "concept:name", "time:timestamp"]].copy()
-# train_stream = train_stream.sort_values("time:timestamp").reset_index(drop=True)
-# print(train_stream)
