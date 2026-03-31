@@ -1,0 +1,14 @@
+datasets/
+  |── sepsis/
+    ├── sepsis_full_log.xes          event log complet (1050 cases)
+    └── sepsis_reference_model.pnml  modèle Petri net de référence
+    |__ ground_truth.csv (events to simulate event stream)
+            Chaque ligne contient :
+            case:concept:name → case ID
+            concept:name → activité
+            time:timestamp → timestamp
+
+            from their prefix alignement resulsts : 
+            prefix_length, cost, cost_delta, cost_delta_full
+            enqueued_nodes, visited_nodes, etc.
+
