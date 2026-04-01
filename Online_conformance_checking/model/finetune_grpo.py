@@ -18,7 +18,6 @@ from train  import (
     qualitative_test, save_checkpoint,
 )
 
-
 # ---------------------------------------------------------------------------
 # Phase 2 config (extends Phase 1 Config)
 # ---------------------------------------------------------------------------
@@ -62,6 +61,7 @@ class PetriNetOracle:
         self.mi        = mi
         self.mf        = mf
         self.semantics = ClassicSemantics()
+        self._enabled_cache = {}
 
         # label → transition lookup (visible transitions only)
         self.label_to_trans = {
@@ -94,11 +94,19 @@ class PetriNetOracle:
                 changed = True
         return marking
 
+    # def enabled_labels(self, marking):
+    #     """Return set of activity label strings enabled at this marking."""
+    #     marking = self._fire_silent_transitions(marking)
+    #     enabled = self.semantics.enabled_transitions(self.net, marking)
+    #     return {t.label for t in enabled if t.label is not None}
+
     def enabled_labels(self, marking):
-        """Return set of activity label strings enabled at this marking."""
-        marking = self._fire_silent_transitions(marking)
-        enabled = self.semantics.enabled_transitions(self.net, marking)
-        return {t.label for t in enabled if t.label is not None}
+        key = frozenset((p.name, c) for p, c in marking.items())
+        if key not in self._enabled_cache:
+            marking = self._fire_silent_transitions(marking)
+            enabled = self.semantics.enabled_transitions(self.net, marking)
+            self._enabled_cache[key] = {t.label for t in enabled if t.label is not None}
+        return self._enabled_cache[key]
 
     def step(self, marking, activity_label: str):
         """
