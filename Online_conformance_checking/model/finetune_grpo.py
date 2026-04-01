@@ -24,8 +24,8 @@ from train  import (
 
 class GRPOConfig(Config):
     # paths
-    PHASE1_CHECKPOINT = Path("/content/best_model.pt")
-    PHASE2_CHECKPOINT = Path("/content/best_model_grpo.pt")
+    PHASE1_CHECKPOINT = Path("/content/checkpoints/best_model.pt")
+    PHASE2_CHECKPOINT = Path("/content/checkpoints/best_model_grpo.pt")
     MODEL_PATH = (
         r"/content"
         r"/spesis_reference_model.pnml"
