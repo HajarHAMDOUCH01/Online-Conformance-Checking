@@ -580,6 +580,13 @@ def main():
     # ── load Petri net ────────────────────────────────────────────────────
     print("\nLoading Petri net model...")
     net, mi, mf = pm4py.read_pnml(cfg.MODEL_PATH)
+    net_places = {p.name: p for p in net.places}
+    for place, count in mi.items():
+        print(f"place name: {place.name}")
+        print(f"same object as net place: {place is net_places.get(place.name)}")
+        print(f"id in marking: {id(place)}")
+        print(f"id in net: {id(net_places.get(place.name))}")
+
     oracle      = PetriNetOracle(net, mi, mf)
     print(f"  transitions : {len(net.transitions)}  |  places : {len(net.places)}")
     print("Pre-warming oracle cache...")
