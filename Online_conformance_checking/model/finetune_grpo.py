@@ -125,11 +125,25 @@ def prewarm_oracle(oracle: PetriNetOracle):
 
     visited = set()
     queue = deque()
-    
-    # start from initial marking after firing silent transitions
-    start = oracle._fire_silent_transitions(copy.deepcopy(oracle.mi))
-    queue.append(start)
 
+    start = copy.deepcopy(oracle.mi)
+    print(f"  initial marking: {oracle.mi}")
+    print(f"  initial marking type: {type(oracle.mi)}")
+    
+    # check enabled transitions at start
+    enabled = oracle.semantics.enabled_transitions(oracle.net, start)
+    print(f"  enabled at start: {[t.label for t in enabled]}")
+    
+    start = oracle._fire_silent_transitions(start)
+    print(f"  after silent firing: {start}")
+    
+    enabled2 = oracle.semantics.enabled_transitions(oracle.net, start)
+    print(f"  enabled after silent: {[t.label for t in enabled2]}")
+    
+    key = oracle._marking_key(start)
+    print(f"  marking key: {key}")
+    
+    queue.append(start)
     while queue:
         marking = queue.popleft()
         key = oracle._marking_key(marking)
