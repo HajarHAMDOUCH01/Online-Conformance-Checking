@@ -120,27 +120,50 @@ class PetriNetOracle:
         return copy.copy(result_marking), success
 
 def prewarm_oracle(oracle: PetriNetOracle):
-    """Walk all reachable markings and cache enabled transitions."""
     from collections import deque
+    import copy
+
     visited = set()
-    queue = deque([oracle.initial_marking()])
+    queue = deque()
     
+    # start from initial marking after firing silent transitions
+    start = oracle._fire_silent_transitions(copy.deepcopy(oracle.mi))
+    queue.append(start)
+
     while queue:
         marking = queue.popleft()
         key = oracle._marking_key(marking)
         if key in visited:
             continue
         visited.add(key)
-        
+
         # cache enabled labels for this marking
-        labels = oracle.enabled_labels(marking)
-        
-        # explore successors
-        for label in labels:
-            new_marking, success = oracle.step(marking, label)
-            if success:
+        enabled = oracle.semantics.enabled_transitions(oracle.net, marking)
+        visible_labels = frozenset(t.label for t in enabled if t.label is not None)
+        oracle._enabled_cache[key] = visible_labels
+
+        # fire silent transitions first to get to stable marking
+        for trans in enabled:
+            if trans.label is None:
+                # fire silent transition → new marking to explore
+                new_marking = oracle.semantics.execute(
+                    trans, oracle.net, copy.deepcopy(marking)
+                )
+                new_marking = oracle._fire_silent_transitions(new_marking)
                 queue.append(new_marking)
-    
+
+        # fire each visible transition → new marking to explore
+        for trans in enabled:
+            if trans.label is not None:
+                new_marking = oracle.semantics.execute(
+                    trans, oracle.net, copy.deepcopy(marking)
+                )
+                new_marking = oracle._fire_silent_transitions(new_marking)
+                # cache the step result
+                step_key = (key, trans.label)
+                oracle._step_cache[step_key] = (new_marking, True)
+                queue.append(new_marking)
+
     print(f"  oracle cache pre-warmed: {len(visited)} unique markings")
 # ---------------------------------------------------------------------------
 # Token-level reward
