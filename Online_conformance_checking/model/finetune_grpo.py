@@ -580,12 +580,27 @@ def main():
     # ── load Petri net ────────────────────────────────────────────────────
     print("\nLoading Petri net model...")
     net, mi, mf = pm4py.read_pnml(cfg.MODEL_PATH)
-    net_places = {p.name: p for p in net.places}
-    for place, count in mi.items():
-        print(f"place name: {place.name}")
-        print(f"same object as net place: {place is net_places.get(place.name)}")
-        print(f"id in marking: {id(place)}")
-        print(f"id in net: {id(net_places.get(place.name))}")
+    print("=== NET STRUCTURE DEBUG ===")
+    print(f"Places: {[p.name for p in net.places]}")
+    print(f"Initial marking: {mi}")
+    print(f"\nFirst 5 transitions:")
+    for t in list(net.transitions)[:5]:
+        print(f"  transition: {t.name} label={t.label}")
+        for arc in t.in_arcs:
+            print(f"    in_arc from: {arc.source.name} weight={arc.weight}")
+        for arc in t.out_arcs:
+            print(f"    out_arc to: {arc.target.name} weight={arc.weight}")
+
+    print(f"\nChecking enabled manually:")
+    for t in net.transitions:
+        can_fire = True
+        for arc in t.in_arcs:
+            tokens = mi.get(arc.source, 0)
+            if tokens < arc.weight:
+                can_fire = False
+                break
+        if can_fire:
+            print(f"  CAN FIRE: {t.label}")
 
     oracle      = PetriNetOracle(net, mi, mf)
     print(f"  transitions : {len(net.transitions)}  |  places : {len(net.places)}")
