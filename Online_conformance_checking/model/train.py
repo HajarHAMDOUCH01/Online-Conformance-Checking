@@ -11,7 +11,6 @@ from torch.utils.data import DataLoader, random_split
 from dataset import PrefixConformanceDataset, collate_fn, PADDING_TOKEN
 from model import PrefixConformanceModel, NTXentLoss
 
-
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -19,8 +18,8 @@ from model import PrefixConformanceModel, NTXentLoss
 class Config:
     # paths
     DATASET_PATH = (
-        r"C:\Users\LENONVO\OneDrive\Desktop\graphs\sujet-CRAN\datasets\spesis"
-        r"\confo_non_conform_prefixes_playout_dataset.pkl"
+        r"/content"
+        r"/confo_non_conform_prefixes_playout_dataset.pkl"
     )
     CHECKPOINT_DIR = Path("checkpoints")
 
@@ -57,6 +56,18 @@ class Config:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def strip_special_tokens(seq: torch.Tensor, bos_idx: int, eos_idx: int, pad_idx: int) -> torch.Tensor:
+    # remove BOS at position 0
+    seq = seq[1:] if seq[0] == bos_idx else seq
+    # find EOS position and truncate
+    eos_positions = (seq == eos_idx).nonzero(as_tuple=True)[0]
+    if len(eos_positions) > 0:
+        seq = seq[:eos_positions[0]]
+    # remove any remaining PAD
+    seq = seq[seq != pad_idx]
+    return seq
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -227,11 +238,8 @@ def qualitative_test(
     inv_vocab = {v: k for k, v in dataset.vocab.items()}
 
     def decode(indices: list[int]) -> list[str]:
-        return [
-            inv_vocab.get(i, "<UNK>")
-            for i in indices
-            if i != dataset.pad_idx
-        ]
+        skip = {dataset.pad_idx, dataset.bos_idx, dataset.eos_idx}
+        return [inv_vocab.get(i, "<UNK>") for i in indices if i not in skip]
 
     print("\n" + "=" * 80)
     print("QUALITATIVE TEST EVALUATION")
@@ -246,7 +254,7 @@ def qualitative_test(
         conforming = batch["aligned_padded"].to(device)  # [1, conf_len]
 
         # greedy decode from noisy encoding
-        predicted = model.align(noisy, max_len=conforming.size(1) + 5)
+        predicted = model.align(noisy, max_len=conforming.size(1) + 5, eos_idx=dataset.eos_idx)
                                                             # [1, pred_len]
 
         noisy_acts    = decode(noisy[0].tolist())
@@ -254,7 +262,11 @@ def qualitative_test(
         pred_acts     = decode(predicted[0].tolist())
 
         # conformance score
-        score = model.conformance_score(noisy, conforming).item()
+        conf_clean = strip_special_tokens(
+        conforming[0], dataset.bos_idx, dataset.eos_idx, dataset.pad_idx
+        ).unsqueeze(0)  
+
+        score = model.conformance_score(noisy, conf_clean).item()
 
         print(f"\n── Sample {printed + 1} " + "─" * 60)
         print(f"  NOISY INPUT   : {noisy_acts}")

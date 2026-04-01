@@ -573,7 +573,7 @@ class PrefixConformanceDataset(Dataset):
 def collate_fn(batch: list[dict], pad_idx: int = 0) -> dict:
     noisy_seqs = [item['noisy'] for item in batch]
     aligned_seqs = [item['aligned'] for item in batch]
-    costs = torch.tensor([item['cost'] for item in batch], dtype=torch.float32)  # ← new
+    costs = torch.tensor([item['cost'] for item in batch], dtype=torch.float32)  
     
     noisy_lengths = torch.tensor([len(seq) for seq in noisy_seqs], dtype=torch.long)
     aligned_lengths = torch.tensor([len(seq) for seq in aligned_seqs], dtype=torch.long)

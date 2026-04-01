@@ -14,7 +14,7 @@ class PositionalEncoding(nn.Module):
     Adds position information to token embeddings.
     """
 
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 512):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 256):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -189,7 +189,7 @@ class PrefixDecoder(nn.Module):
         dropout: float = 0.1,
         pad_idx: int = None, # to be verifed 
         bos_idx: int = None, # to be verifed 
-        max_len: int = 512,
+        max_len: int = 256,
         eos_idx: int = None
     ):
         super().__init__()
@@ -292,7 +292,7 @@ class PrefixDecoder(nn.Module):
     def generate(
         self,
         z: torch.Tensor,            # [B, d_model]
-        max_len: int = 50,
+        max_len: int = 256,
         eos_idx: int | None = None,
     ) -> torch.Tensor:
         """
@@ -353,7 +353,7 @@ class PrefixConformanceModel(nn.Module):
         dropout: float = 0.1,
         pad_idx: int = None ,
         bos_idx: int = None,
-        max_len: int = 30,
+        max_len: int = 256,
         eos_idx: int = None
     ):
         super().__init__()
@@ -425,7 +425,8 @@ class PrefixConformanceModel(nn.Module):
         """
         # ── encode both sides ────────────────────────────────────────────
         z_noisy      = self.encode(noisy)       # [B, d_model]
-        z_conforming = self.encode(conforming)  # [B, d_model]
+        conf_for_encoder = conforming[:, 1:-1] 
+        z_conforming = self.encode(conf_for_encoder)  # [B, d_model]
 
         # ── decode conforming prefix from noisy encoding ─────────────────
         # teacher forcing: feed full conforming prefix as decoder input
@@ -447,7 +448,7 @@ class PrefixConformanceModel(nn.Module):
     def align(
         self,
         noisy: torch.Tensor,        # [B, noisy_len]
-        max_len: int = 50,
+        max_len: int = 256,
         eos_idx: int = None,
     ) -> torch.Tensor:
         """
@@ -478,7 +479,8 @@ class PrefixConformanceModel(nn.Module):
         Since both vectors are already L2-normalised, this is just a dot product.
         """
         z_n = self.encode(noisy)
-        z_c = self.encode(conforming)
+        conf_for_encoder = conforming[:, 1:-1] 
+        z_c = self.encode(conf_for_encoder)
         return (z_n * z_c).sum(dim=-1)          # [B]
 
 
@@ -588,7 +590,7 @@ if __name__ == "__main__":
     print(f"total_loss         : {total_loss.item():.4f}")
 
     # alignment inference
-    aligned = model.align(noisy, max_len=10, eos_idx=None)
+    aligned = model.align(noisy, max_len=256, eos_idx=None)
     print(f"aligned shape      : {aligned.shape}")        # [4, <=10]
 
     # conformance score

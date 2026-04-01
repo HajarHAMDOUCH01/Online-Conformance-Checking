@@ -25,13 +25,12 @@ from train  import (
 
 class GRPOConfig(Config):
     # paths
-    PHASE1_CHECKPOINT = Path("checkpoints/best_model.pt")
-    PHASE2_CHECKPOINT = Path("checkpoints/best_model_grpo.pt")
+    PHASE1_CHECKPOINT = Path("/content/best_model.pt")
+    PHASE2_CHECKPOINT = Path("/content/best_model_grpo.pt")
     MODEL_PATH = (
-        r"C:\Users\LENONVO\OneDrive\Desktop\graphs\sujet-CRAN\datasets\spesis"
-        r"\spesis_reference_model.pnml"
+        r"/content"
+        r"/spesis_reference_model.pnml"
     )
-
     # GRPO
     K_SAMPLES       = 6        # candidate sequences per noisy prefix
     SAMPLE_TEMP     = 0.8      # sampling temperature  (< 1 = less random)
@@ -188,7 +187,7 @@ def sample_candidates(
     log_probs_sum = []
 
     for _ in range(K):
-        generated   = [pad_idx]          # start token (BOS = PAD reuse)
+        generated = [model.decoder.bos_idx] 
         lp_sum      = 0.0
         lp_list     = []
 
@@ -410,7 +409,6 @@ def grpo_train_epoch(
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
-@torch.no_grad()
 def grpo_validate(
     model: PrefixConformanceModel,
     loader: DataLoader,
@@ -425,21 +423,25 @@ def grpo_validate(
     for batch in loader:
         noisy = batch['noisy_padded'].to(device)
         aligned = batch['aligned_padded'].to(device)
-        costs = batch['costs'].to(device)  # ← new
+        costs = batch['costs'].to(device)
         
         for i in range(noisy.size(0)):
             # Greedy alignment
-            pred = model.align(noisy[i:i+1], max_len=cfg.MAX_GEN_LEN)
+            pred = model.align(
+                noisy[i:i+1],
+                max_len=cfg.MAX_GEN_LEN,
+                eos_idx=model.decoder.eos_idx
+            )
             
             gt_labels = [
                 inv_vocab[j.item()]
                 for j in aligned[i]
-                if j.item() not in [model.pad_idx, model.bos_idx, model.eos_idx]
+                if j.item() not in [model.pad_idx, model.decoder.bos_idx, model.decoder.eos_idx]
             ]
             pred_labels = [
                 inv_vocab.get(j.item(), "<UNK>")
                 for j in pred[0]
-                if j.item() not in [model.pad_idx, model.bos_idx, model.eos_idx]
+                if j.item() not in [model.pad_idx, model.decoder.bos_idx, model.decoder.eos_idx]
             ]
             
             r = compute_sequence_reward(
@@ -509,7 +511,8 @@ def main():
         dim_feedforward=cfg.DIM_FEEDFORWARD,
         dropout=cfg.DROPOUT,
         pad_idx=dataset.pad_idx,
-        bos_idx=dataset.pad_idx,
+        bos_idx=dataset.bos_idx,
+        eos_idx=dataset.eos_idx,
     ).to(device)
 
     # ── load Phase 1 checkpoint ───────────────────────────────────────────
