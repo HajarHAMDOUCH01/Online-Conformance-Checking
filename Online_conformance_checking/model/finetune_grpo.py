@@ -173,6 +173,7 @@ def sample_candidates(
     temperature: float,
     vocab_size: int,
     pad_idx: int,
+    eos_idx: int,
     device: torch.device,
 ) -> tuple[list[list[int]], torch.Tensor]:
     """
@@ -202,6 +203,9 @@ def sample_candidates(
 
             lp_list.append(log_p)
             generated.append(next_token)
+
+            if next_token == model.decoder.eos_idx:
+                break
 
         candidates.append(generated[1:])        # strip BOS
         log_probs_sum.append(sum(lp_list))
@@ -280,7 +284,8 @@ def grpo_loss_one_sample(
             max_len=cfg.MAX_GEN_LEN,
             temperature=cfg.SAMPLE_TEMP,
             vocab_size=model.decoder.vocab_size,
-            pad_idx=model.pad_idx,
+            pad_idx=model.decoder.pad_idx,
+            eos_idx=model.decoder.eos_idx,
             device=device,
         )
     model.train()  
@@ -288,10 +293,11 @@ def grpo_loss_one_sample(
     # ── score each candidate ─────────────────────────────────────────────
     rewards = []
     for cand_indices in candidates:
+        skip = {model.pad_idx, model.decoder.bos_idx, model.decoder.eos_idx}
         cand_labels = [
             inv_vocab.get(i, "<UNK>")
             for i in cand_indices
-            if i != model.pad_idx
+            if i not in skip
         ]
         r = compute_sequence_reward(
                     generated_labels=cand_labels,
@@ -313,34 +319,49 @@ def grpo_loss_one_sample(
     # recompute log-probs WITH gradients for each candidate
     pg_loss = torch.tensor(0.0, device=device)
 
-    for k, (cand_indices, adv) in enumerate(zip(candidates, advantages)):
-        if not cand_indices:
-            continue
+    from torch.nn.utils.rnn import pad_sequence
 
-        # build decoder input/target from candidate
-        cand_t  = torch.tensor([cand_indices], dtype=torch.long, device=device)
-        dec_in  = cand_t[:, :-1]
-        dec_tgt = cand_t[:, 1:]
+    valid_candidates = []
+    valid_advantages = []
+    for cand_indices, adv in zip(candidates, advantages):
+        if model.decoder.eos_idx in cand_indices:
+            eos_pos = cand_indices.index(model.decoder.eos_idx)
+            cand_indices = cand_indices[:eos_pos + 1]
+        if len(cand_indices) > 1:
+            valid_candidates.append(
+                torch.tensor(cand_indices, dtype=torch.long, device=device)
+            )
+            valid_advantages.append(adv)
 
-        if dec_in.size(1) == 0:
-            continue
+    if valid_candidates:
+        # pad all K candidates to same length → [K, max_cand_len]
+        cand_batch = pad_sequence(valid_candidates, batch_first=True, padding_value=model.pad_idx)
+        dec_in_batch  = cand_batch[:, :-1]   # [K, T-1]
+        dec_tgt_batch = cand_batch[:, 1:]    # [K, T-1]
 
-        logits  = model.decoder(z_noisy, dec_in)               # [1, T-1, V]
-        log_p   = F.log_softmax(logits, dim=-1)                 # [1, T-1, V]
+        # expand z_noisy for all K candidates → [K, d_model]
+        z_expanded = z_noisy.expand(len(valid_candidates), -1)
 
-        # gather log-prob of each chosen token
-        chosen_log_p = log_p.squeeze(0).gather(
-            1, dec_tgt.squeeze(0).unsqueeze(1)
-        ).squeeze(1)                                            # [T-1]
+        # ONE forward pass for all K
+        logits_batch = model.decoder(z_expanded, dec_in_batch)   # [K, T-1, V]
+        log_p_batch  = F.log_softmax(logits_batch, dim=-1)        # [K, T-1, V]
 
-        seq_log_p = chosen_log_p.mean()                         # scalar
-        pg_loss   = pg_loss - adv * seq_log_p                   # policy gradient
+        # gather chosen token log-probs
+        chosen_log_p = log_p_batch.gather(
+            2, dec_tgt_batch.unsqueeze(-1)
+        ).squeeze(-1)                                             # [K, T-1]
 
-    pg_loss = pg_loss / max(cfg.K_SAMPLES, 1)
+        # mask padding
+        pad_mask = (dec_tgt_batch != model.pad_idx).float()       # [K, T-1]
+        seq_log_p = (chosen_log_p * pad_mask).sum(dim=-1) / pad_mask.sum(dim=-1).clamp(min=1)
+                                                                # [K]
+
+        adv_tensor = torch.stack(valid_advantages)                # [K]
+        pg_loss = -(adv_tensor * seq_log_p).mean()
+    
+
 
     # ── KL penalty ───────────────────────────────────────────────────────
-    with torch.no_grad():
-        z_noisy_ref = ref_model.encode(noisy)
     kl = kl_penalty_vs_reference(
         model, ref_model, z_noisy, aligned, model.pad_idx
     )
