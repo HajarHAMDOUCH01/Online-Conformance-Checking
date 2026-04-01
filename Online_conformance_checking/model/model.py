@@ -1,28 +1,3 @@
-"""
-model.py
-
-Transformer Encoder-Decoder for online conformance checking.
-
-Architecture
-------------
-Encoder:
-    - Activity embedding + positional encoding
-    - N Transformer encoder layers
-    - CLS token pooling → latent vector z
-    - L2 normalization of z (for contrastive loss on hypersphere)
-
-Decoder:
-    - Activity embedding + positional encoding  (on conforming prefix)
-    - N Transformer decoder layers
-        * Masked causal self-attention  (can't look at future tokens)
-        * Cross-attention over z        (broadcast as seq of length 1)
-    - Linear projection → vocab logits (causal next-activity prediction)
-
-Losses (computed outside the model, guided by forward outputs):
-    - Reconstruction : cross-entropy over decoder logits vs conforming prefix
-    - Contrastive    : NT-Xent on (z_noisy, z_conforming) pairs
-"""
-
 import math
 import torch
 import torch.nn as nn
