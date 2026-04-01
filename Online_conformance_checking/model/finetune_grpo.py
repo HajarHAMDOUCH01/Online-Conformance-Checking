@@ -64,6 +64,15 @@ class PetriNetOracle:
         self._enabled_cache = {}
         self._step_cache    = {}
 
+        self._stable_marking_cache = {}   
+
+    def _get_stable_marking(self, marking):
+        """Get marking after firing all silent transitions, with caching."""
+        key = self._marking_key(marking)
+        if key not in self._stable_marking_cache:
+            self._stable_marking_cache[key] = self._fire_silent_transitions(marking)
+        return self._stable_marking_cache[key]
+
     def _get_enabled(self, marking) -> set:
         """Return set of enabled transitions using manual arc checking."""
         enabled = set()
@@ -114,7 +123,7 @@ class PetriNetOracle:
     def enabled_labels(self, marking):
         key = self._marking_key(marking)
         if key not in self._enabled_cache:
-            m = self._fire_silent_transitions(marking)
+            m = self._get_stable_marking(marking)
             enabled = self._get_enabled(m)
             self._enabled_cache[key] = frozenset(
                 t.label for t in enabled if t.label is not None
@@ -124,7 +133,7 @@ class PetriNetOracle:
     def step(self, marking, activity_label: str):
         key = (self._marking_key(marking), activity_label)
         if key not in self._step_cache:
-            m = self._fire_silent_transitions(marking)
+            m = self._get_stable_marking(marking)
             trans = self.label_to_trans.get(activity_label)
             if trans is None:
                 self._step_cache[key] = (marking, False)
@@ -138,6 +147,7 @@ class PetriNetOracle:
         result_marking, success = self._step_cache[key]
         from pm4py.objects.petri_net.obj import Marking
         return Marking(result_marking), success
+    
 def prewarm_oracle(oracle: PetriNetOracle):
     from collections import deque
     from pm4py.objects.petri_net.obj import Marking
@@ -153,18 +163,30 @@ def prewarm_oracle(oracle: PetriNetOracle):
         visited.add(key)
 
         m = oracle._fire_silent_transitions(Marking(marking))
+        
+        # cache stable marking
+        oracle._stable_marking_cache[key] = m
+        
         enabled = oracle._get_enabled(m)
+        
+        # cache enabled labels
         oracle._enabled_cache[key] = frozenset(
             t.label for t in enabled if t.label is not None
         )
 
         for trans in enabled:
             new_marking = oracle._fire(Marking(m), trans)
+            
+            # cache step result
             step_key = (key, trans.label)
             oracle._step_cache[step_key] = (new_marking, True)
+            
             queue.append(new_marking)
 
     print(f"  oracle cache pre-warmed: {len(visited)} unique markings")
+    print(f"  enabled_cache entries : {len(oracle._enabled_cache)}")
+    print(f"  step_cache entries    : {len(oracle._step_cache)}")
+    print(f"  stable_marking_cache  : {len(oracle._stable_marking_cache)}")
 # ---------------------------------------------------------------------------
 # Token-level reward
 # ---------------------------------------------------------------------------
