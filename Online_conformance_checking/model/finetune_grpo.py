@@ -51,52 +51,71 @@ class GRPOConfig(Config):
 # ---------------------------------------------------------------------------
 
 class PetriNetOracle:
-    """
-    Wraps pm4py Petri net semantics for step-by-step token reward computation.
-    Handles silent transitions automatically.
-    """
 
     def __init__(self, net, mi, mf):
-        self.net       = net
-        self.mi        = mi
-        self.mf        = mf
-        self.semantics = ClassicSemantics()
-        self._enabled_cache = {}
-        self._step_cache = {} 
-        # label → transition lookup (visible transitions only)
+        self.net  = net
+        self.mi   = mi
+        self.mf   = mf
         self.label_to_trans = {
             t.label: t
             for t in net.transitions
             if t.label is not None
         }
+        self._enabled_cache = {}
+        self._step_cache    = {}
 
-    def initial_marking(self):
-        """Return a fresh copy of the initial marking."""
-        return copy.copy(self.mi)
+    def _get_enabled(self, marking) -> set:
+        """Return set of enabled transitions using manual arc checking."""
+        enabled = set()
+        for t in self.net.transitions:
+            can_fire = True
+            for arc in t.in_arcs:
+                if marking.get(arc.source, 0) < arc.weight:
+                    can_fire = False
+                    break
+            if can_fire:
+                enabled.add(t)
+        return enabled
+
+    def _fire(self, marking, transition):
+        """Fire a transition and return new marking."""
+        from pm4py.objects.petri_net.obj import Marking
+        new_marking = Marking(marking)
+        for arc in transition.in_arcs:
+            new_marking[arc.source] = new_marking.get(arc.source, 0) - arc.weight
+            if new_marking[arc.source] == 0:
+                del new_marking[arc.source]
+        for arc in transition.out_arcs:
+            new_marking[arc.target] = new_marking.get(arc.target, 0) + arc.weight
+        return new_marking
 
     def _marking_key(self, marking):
-            return frozenset((p.name, c) for p, c in marking.items())
+        return frozenset((p.name, c) for p, c in marking.items())
+
+    def initial_marking(self):
+        from pm4py.objects.petri_net.obj import Marking
+        return Marking(self.mi)
 
     def _fire_silent_transitions(self, marking):
         changed = True
         while changed:
             changed = False
-            enabled = self.semantics.enabled_transitions(self.net, marking)
+            enabled = self._get_enabled(marking)
             visible = {t for t in enabled if t.label is not None}
             if visible:
                 break
             silent = {t for t in enabled if t.label is None}
             if silent:
                 t = next(iter(silent))
-                marking = self.semantics.execute(t, self.net, marking)
+                marking = self._fire(marking, t)
                 changed = True
         return marking
 
     def enabled_labels(self, marking):
         key = self._marking_key(marking)
         if key not in self._enabled_cache:
-            m = self._fire_silent_transitions(copy.copy(marking))
-            enabled = self.semantics.enabled_transitions(self.net, m)
+            m = self._fire_silent_transitions(marking)
+            enabled = self._get_enabled(m)
             self._enabled_cache[key] = frozenset(
                 t.label for t in enabled if t.label is not None
             )
@@ -105,45 +124,27 @@ class PetriNetOracle:
     def step(self, marking, activity_label: str):
         key = (self._marking_key(marking), activity_label)
         if key not in self._step_cache:
-            m = self._fire_silent_transitions(copy.copy(marking))
+            m = self._fire_silent_transitions(marking)
             trans = self.label_to_trans.get(activity_label)
             if trans is None:
                 self._step_cache[key] = (marking, False)
             else:
-                enabled = self.semantics.enabled_transitions(self.net, m)
+                enabled = self._get_enabled(m)
                 if trans not in enabled:
                     self._step_cache[key] = (marking, False)
                 else:
-                    new_m = self.semantics.execute(trans, self.net, m)
+                    new_m = self._fire(m, trans)
                     self._step_cache[key] = (new_m, True)
         result_marking, success = self._step_cache[key]
-        return copy.copy(result_marking), success
-
+        from pm4py.objects.petri_net.obj import Marking
+        return Marking(result_marking), success
 def prewarm_oracle(oracle: PetriNetOracle):
     from collections import deque
-    import copy
+    from pm4py.objects.petri_net.obj import Marking
 
     visited = set()
-    queue = deque()
+    queue = deque([Marking(oracle.mi)])
 
-    start = copy.deepcopy(oracle.mi)
-    print(f"  initial marking: {oracle.mi}")
-    print(f"  initial marking type: {type(oracle.mi)}")
-    
-    # check enabled transitions at start
-    enabled = oracle.semantics.enabled_transitions(oracle.net, start)
-    print(f"  enabled at start: {[t.label for t in enabled]}")
-    
-    start = oracle._fire_silent_transitions(start)
-    print(f"  after silent firing: {start}")
-    
-    enabled2 = oracle.semantics.enabled_transitions(oracle.net, start)
-    print(f"  enabled after silent: {[t.label for t in enabled2]}")
-    
-    key = oracle._marking_key(start)
-    print(f"  marking key: {key}")
-    
-    queue.append(start)
     while queue:
         marking = queue.popleft()
         key = oracle._marking_key(marking)
@@ -151,32 +152,17 @@ def prewarm_oracle(oracle: PetriNetOracle):
             continue
         visited.add(key)
 
-        # cache enabled labels for this marking
-        enabled = oracle.semantics.enabled_transitions(oracle.net, marking)
-        visible_labels = frozenset(t.label for t in enabled if t.label is not None)
-        oracle._enabled_cache[key] = visible_labels
+        m = oracle._fire_silent_transitions(Marking(marking))
+        enabled = oracle._get_enabled(m)
+        oracle._enabled_cache[key] = frozenset(
+            t.label for t in enabled if t.label is not None
+        )
 
-        # fire silent transitions first to get to stable marking
         for trans in enabled:
-            if trans.label is None:
-                # fire silent transition → new marking to explore
-                new_marking = oracle.semantics.execute(
-                    trans, oracle.net, copy.deepcopy(marking)
-                )
-                new_marking = oracle._fire_silent_transitions(new_marking)
-                queue.append(new_marking)
-
-        # fire each visible transition → new marking to explore
-        for trans in enabled:
-            if trans.label is not None:
-                new_marking = oracle.semantics.execute(
-                    trans, oracle.net, copy.deepcopy(marking)
-                )
-                new_marking = oracle._fire_silent_transitions(new_marking)
-                # cache the step result
-                step_key = (key, trans.label)
-                oracle._step_cache[step_key] = (new_marking, True)
-                queue.append(new_marking)
+            new_marking = oracle._fire(Marking(m), trans)
+            step_key = (key, trans.label)
+            oracle._step_cache[step_key] = (new_marking, True)
+            queue.append(new_marking)
 
     print(f"  oracle cache pre-warmed: {len(visited)} unique markings")
 # ---------------------------------------------------------------------------
