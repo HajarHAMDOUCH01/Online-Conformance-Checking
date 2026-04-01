@@ -39,7 +39,7 @@ class Config:
 
     # training
     BATCH_SIZE      = 64
-    EPOCHS          = 80
+    EPOCHS          = 120
     LR              = 3e-4
     WEIGHT_DECAY    = 1e-4
     LAMBDA_CONTRAST = 0.5       # weight of contrastive loss
@@ -124,7 +124,7 @@ def compute_loss(
         NT-Xent on (z_noisy, z_conforming).
     """
     noisy      = batch["noisy_padded"].to(device)       # [B, noisy_len]
-    conforming = batch["conforming_padded"].to(device)  # [B, conf_len]
+    conforming = batch["aligned_padded"].to(device)  # [B, conf_len]
 
     # ── reconstruction: shift conforming by 1 ────────────────────────────
     dec_input  = conforming[:, :-1]     # feed:    [BOS, a1, a2, ..., a_{T-1}]
@@ -243,7 +243,7 @@ def qualitative_test(
             break
 
         noisy      = batch["noisy_padded"].to(device)       # [1, noisy_len]
-        conforming = batch["conforming_padded"].to(device)  # [1, conf_len]
+        conforming = batch["aligned_padded"].to(device)  # [1, conf_len]
 
         # greedy decode from noisy encoding
         predicted = model.align(noisy, max_len=conforming.size(1) + 5)
@@ -308,6 +308,9 @@ def main():
     # ── load dataset ──────────────────────────────────────────────────────
     print("\nLoading dataset...")
     dataset = PrefixConformanceDataset.load(cfg.DATASET_PATH)
+    vocab  =dataset.vocab
+    print(f"\n vocab verification : , {dataset.pad_idx}\n {dataset.bos_idx}\n{dataset.eos_idx}\n")
+    print()
     print(f"  total pairs : {len(dataset):,}  |  vocab size : {dataset.vocab_size}")
 
     # ── dataloaders ───────────────────────────────────────────────────────
@@ -325,7 +328,8 @@ def main():
         dim_feedforward=cfg.DIM_FEEDFORWARD,
         dropout=cfg.DROPOUT,
         pad_idx=dataset.pad_idx,
-        bos_idx=dataset.pad_idx,    # reusing PAD as BOS; add dedicated token if needed
+        bos_idx=dataset.bos_idx,    
+        eos_idx=dataset.eos_idx
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -350,6 +354,9 @@ def main():
     print(f"{'Epoch':>6}  {'Train':>10}  {'T_rec':>8}  {'T_con':>8}  "
           f"{'Valid':>10}  {'V_rec':>8}  {'V_con':>8}  {'LR':>10}")
     print("-" * 80)
+
+    # ckpt_init = torch.load(best_ckpt, map_location=device)
+    # model.load_state_dict(ckpt_init["model"])
 
     for epoch in range(start_epoch + 1, cfg.EPOCHS + 1):
 

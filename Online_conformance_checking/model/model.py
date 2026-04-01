@@ -212,15 +212,17 @@ class PrefixDecoder(nn.Module):
         num_layers: int = 3,
         dim_feedforward: int = 256,
         dropout: float = 0.1,
-        pad_idx: int = 0,
-        bos_idx: int = 0,
+        pad_idx: int = None, # to be verifed 
+        bos_idx: int = None, # to be verifed 
         max_len: int = 512,
+        eos_idx: int = None
     ):
         super().__init__()
 
-        self.d_model   = d_model
-        self.pad_idx   = pad_idx
-        self.bos_idx   = bos_idx
+        self.d_model    = d_model
+        self.pad_idx    = pad_idx
+        self.bos_idx    = bos_idx
+        self.eos_idx    = eos_idx
         self.vocab_size = vocab_size
 
         # ── token embedding ──────────────────────────────────────────────
@@ -329,6 +331,7 @@ class PrefixDecoder(nn.Module):
         B = z.size(0)
         device = z.device
 
+        # to be verified 
         generated = torch.full((B, 1), self.bos_idx, dtype=torch.long, device=device)
 
         for _ in range(max_len - 1):
@@ -373,14 +376,14 @@ class PrefixConformanceModel(nn.Module):
         num_decoder_layers: int = 3,
         dim_feedforward: int = 256,
         dropout: float = 0.1,
-        pad_idx: int = 0,
-        bos_idx: int = 0,
-        max_len: int = 512,
+        pad_idx: int = None ,
+        bos_idx: int = None,
+        max_len: int = 30,
+        eos_idx: int = None
     ):
         super().__init__()
 
         self.pad_idx = pad_idx
-
         self.encoder = PrefixEncoder(
             vocab_size=vocab_size,
             d_model=d_model,
@@ -402,6 +405,7 @@ class PrefixConformanceModel(nn.Module):
             pad_idx=pad_idx,
             bos_idx=bos_idx,
             max_len=max_len,
+            eos_idx=eos_idx
         )
 
     # ------------------------------------------------------------------
@@ -469,7 +473,7 @@ class PrefixConformanceModel(nn.Module):
         self,
         noisy: torch.Tensor,        # [B, noisy_len]
         max_len: int = 50,
-        eos_idx: int | None = None,
+        eos_idx: int = None,
     ) -> torch.Tensor:
         """
         Given a noisy (possibly non-conforming) prefix, encode it and
@@ -609,7 +613,7 @@ if __name__ == "__main__":
     print(f"total_loss         : {total_loss.item():.4f}")
 
     # alignment inference
-    aligned = model.align(noisy, max_len=10)
+    aligned = model.align(noisy, max_len=10, eos_idx=None)
     print(f"aligned shape      : {aligned.shape}")        # [4, <=10]
 
     # conformance score
