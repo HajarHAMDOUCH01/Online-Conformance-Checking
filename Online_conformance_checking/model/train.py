@@ -38,7 +38,7 @@ class Config:
 
     # training
     BATCH_SIZE      = 64
-    EPOCHS          = 120
+    EPOCHS          = 100
     LR              = 3e-4
     WEIGHT_DECAY    = 1e-4
     LAMBDA_CONTRAST = 0.5       # weight of contrastive loss
