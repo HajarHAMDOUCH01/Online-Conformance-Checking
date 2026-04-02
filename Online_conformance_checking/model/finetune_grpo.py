@@ -24,26 +24,27 @@ from train  import (
 
 class GRPOConfig(Config):
     # paths
-    PHASE1_CHECKPOINT = Path("/content/checkpoints/best_model.pt")
-    PHASE2_CHECKPOINT = Path("/content/checkpoints/best_model_grpo.pt")
+    PHASE1_CHECKPOINT = Path("checkpoints/best_model.pt")
+    PHASE2_CHECKPOINT = Path("checkpoints/best_model_grpo.pt")
     MODEL_PATH = (
-        r"/content"
-        r"/spesis_reference_model.pnml"
+        r"C:\Users\LENONVO\OneDrive\Desktop\graphs\sujet-CRAN\datasets\spesis"
+        r"\spesis_reference_model.pnml"
     )
+
     # GRPO
-    K_SAMPLES       = 6        # candidate sequences per noisy prefix
+    K_SAMPLES       = 3        # candidate sequences per noisy prefix
     SAMPLE_TEMP     = 0.8      # sampling temperature  (< 1 = less random)
-    KL_BETA         = 0.05     # KL penalty weight vs reference policy
+    KL_BETA         = 0.2     # KL penalty weight vs reference policy
     GRPO_LAMBDA     = 1.0      # weight of GRPO loss in total loss
 
     # finetuning
     EPOCHS_P2       = 20
-    LR_P2           = 5e-5     # lower LR for finetuning
-    GRAD_CLIP       = 0.5
-    BATCH_SIZE_P2   = 16       # smaller batch — K samples per item is expensive
+    LR_P2           = 1e-5     # lower LR for finetuning
+    GRAD_CLIP       = 0.1
+    BATCH_SIZE_P2   = 64       
 
     # generation
-    MAX_GEN_LEN     = 30       # max tokens to generate per candidate
+    MAX_GEN_LEN     = 10       # max tokens to generate per candidate
 
 
 # ---------------------------------------------------------------------------
@@ -191,13 +192,15 @@ def prewarm_oracle(oracle: PetriNetOracle):
 # Token-level reward
 # ---------------------------------------------------------------------------
 
+
+# to do : fix this 
 def compute_sequence_reward(
     generated_labels: list[str],
     ground_truth_labels: list[str],
     optimal_cost: int,
     oracle: PetriNetOracle,
     cost_per_invalid: float = 1.0,
-    cost_penalty_scale: float = 0.5
+    cost_penalty_scale: float = 0.1
 ) -> float:
     marking   = oracle.initial_marking()
     generated_cost = 0
@@ -211,6 +214,7 @@ def compute_sequence_reward(
             generated_cost += cost_per_invalid
         else:
             # token is enabled — check against ground truth
+            
             if t < len(ground_truth_labels) and token == ground_truth_labels[t]:
                 validity_rewards.append(1.0)
                 # generated_cost += 0
@@ -229,7 +233,8 @@ def compute_sequence_reward(
     if generated_cost == optimal_cost:
         cost_penalty +=0.1
     
-    return avg_validity + cost_penalty
+    result = avg_validity + cost_penalty
+    return max(result, -2.0)
 
 # ---------------------------------------------------------------------------
 # Stochastic decoding with log-probabilities
@@ -324,7 +329,6 @@ def kl_penalty_vs_reference(
 # ---------------------------------------------------------------------------
 # GRPO loss for one sample
 # ---------------------------------------------------------------------------
-
 def grpo_loss_one_sample(
     model: PrefixConformanceModel,
     ref_model: PrefixConformanceModel,
@@ -339,16 +343,15 @@ def grpo_loss_one_sample(
     
     z_noisy = model.encode(noisy)
     
-    # Ground truth labels (without BOS/EOS for comparison)
+    # Ground truth labels (for reward computation only)
     gt_labels = [
         inv_vocab[i.item()]
         for i in aligned[0]
         if i.item() not in [model.pad_idx, model.decoder.bos_idx, model.decoder.eos_idx]
     ]
     
-    # Sample K candidates
     with torch.no_grad():
-        candidates, _ = sample_candidates(
+        candidates, old_log_probs = sample_candidates(
             model, z_noisy,
             K=cfg.K_SAMPLES,
             max_len=cfg.MAX_GEN_LEN,
@@ -358,9 +361,9 @@ def grpo_loss_one_sample(
             eos_idx=model.decoder.eos_idx,
             device=device,
         )
-    model.train()  
-
-    # ── score each candidate ─────────────────────────────────────────────
+        model.train()
+        # old_log_probs: [K] - these are from the model before update
+    
     rewards = []
     for cand_indices in candidates:
         skip = {model.pad_idx, model.decoder.bos_idx, model.decoder.eos_idx}
@@ -370,76 +373,118 @@ def grpo_loss_one_sample(
             if i not in skip
         ]
         r = compute_sequence_reward(
-                    generated_labels=cand_labels,
-                    ground_truth_labels=gt_labels,
-                    optimal_cost=optimal_cost, 
-                    oracle=oracle,
-                    cost_penalty_scale=0.5,
-                )        
+            generated_labels=cand_labels,
+            ground_truth_labels=gt_labels,
+            optimal_cost=optimal_cost,
+            oracle=oracle,
+            cost_penalty_scale=0.1,
+        )
         rewards.append(r)
-
+    
     rewards_t = torch.tensor(rewards, dtype=torch.float32, device=device)  # [K]
-
-    # ── group-relative advantage ─────────────────────────────────────────
+    
     r_mean = rewards_t.mean()
-    r_std  = rewards_t.std() + 1e-8
-    advantages = (rewards_t - r_mean) / r_std                               # [K]
-
-    # ── policy gradient loss ─────────────────────────────────────────────
-    # recompute log-probs WITH gradients for each candidate
-    pg_loss = torch.tensor(0.0, device=device)
-
-    from torch.nn.utils.rnn import pad_sequence
-
+    r_std = rewards_t.std() + 1e-8
+    advantages = (rewards_t - r_mean) / r_std  # [K]
+    valid_indices = []
+    new_log_probs = []
     valid_candidates = []
     valid_advantages = []
-    for cand_indices, adv in zip(candidates, advantages):
+    
+    for i, (cand_indices, adv) in enumerate(zip(candidates, advantages)):
         if model.decoder.eos_idx in cand_indices:
             eos_pos = cand_indices.index(model.decoder.eos_idx)
             cand_indices = cand_indices[:eos_pos + 1]
-        if len(cand_indices) > 1:
-            valid_candidates.append(
-                torch.tensor(cand_indices, dtype=torch.long, device=device)
-            )
-            valid_advantages.append(adv)
-
-    if valid_candidates:
-        # pad all K candidates to same length → [K, max_cand_len]
-        cand_batch = pad_sequence(valid_candidates, batch_first=True, padding_value=model.pad_idx)
-        dec_in_batch  = cand_batch[:, :-1]   # [K, T-1]
-        dec_tgt_batch = cand_batch[:, 1:]    # [K, T-1]
-
-        # expand z_noisy for all K candidates → [K, d_model]
-        z_expanded = z_noisy.expand(len(valid_candidates), -1)
-
-        # ONE forward pass for all K
-        logits_batch = model.decoder(z_expanded, dec_in_batch)   # [K, T-1, V]
-        log_p_batch  = F.log_softmax(logits_batch, dim=-1)        # [K, T-1, V]
-
-        # gather chosen token log-probs
-        chosen_log_p = log_p_batch.gather(
-            2, dec_tgt_batch.unsqueeze(-1)
-        ).squeeze(-1)                                             # [K, T-1]
-
-        # mask padding
-        pad_mask = (dec_tgt_batch != model.pad_idx).float()       # [K, T-1]
-        seq_log_p = (chosen_log_p * pad_mask).sum(dim=-1) / pad_mask.sum(dim=-1).clamp(min=1)
-                                                                # [K]
-
-        adv_tensor = torch.stack(valid_advantages)                # [K]
-        pg_loss = -(adv_tensor * seq_log_p).mean()
+        
+        if len(cand_indices) < 2:  # Too short, skip
+            continue
+        valid_indices.append(i)          
+        valid_candidates.append(cand_indices)
+        valid_advantages.append(adv)
+        # Convert to tensor
+        cand_tensor = torch.tensor([cand_indices], dtype=torch.long, device=device)
+        
+        # Compute log probability using current model (with gradients)
+        log_prob_sum = 0.0
+        
+        # Start with BOS
+        decoder_input = torch.tensor([[model.decoder.bos_idx]], device=device)
+        
+        for t, token in enumerate(cand_indices):
+            # Get logits for next token
+            logits = model.decoder(z_noisy, decoder_input)  # [1, t+1, vocab_size]
+            logits_last = logits[0, -1, :]  # [vocab_size]
+            
+            # Get probability of the actual token
+            probs = F.softmax(logits_last, dim=-1)
+            token_prob = probs[token]
+            log_prob = torch.log(token_prob + 1e-8)
+            
+            log_prob_sum = log_prob_sum + log_prob
+            
+            # Append token for next step
+            decoder_input = torch.cat([
+                decoder_input,
+                torch.tensor([[token]], device=device)
+            ], dim=1)
+            
+            if token == model.decoder.eos_idx:
+                break
+        
+        new_log_probs.append(log_prob_sum)
     
-
-
-    # ── KL penalty ───────────────────────────────────────────────────────
-    kl = kl_penalty_vs_reference(
-        model, ref_model, z_noisy, aligned, model.pad_idx
+    if not valid_candidates:
+        return torch.tensor(0.0, device=device), 0.0, 0.0
+    
+    # Convert to tensors
+    new_log_probs = torch.stack(new_log_probs)  # [K_valid]
+    old_log_probs_valid = old_log_probs[valid_indices] 
+    advantages_valid = torch.stack(valid_advantages)  # [K_valid]
+    # ratio = exp(new_log_p - old_log_p) = π_new / π_old
+    ratio = torch.exp(new_log_probs - old_log_probs_valid)  # [K_valid]
+    
+    epsilon = 0.2  # Clipping range
+    clipped_ratio = torch.clamp(ratio, 1 - epsilon, 1 + epsilon)
+    
+    # Policy loss (negative because we minimize)
+    loss_per_candidate = -torch.min(
+        ratio * advantages_valid,
+        clipped_ratio * advantages_valid
     )
-
-    # ── total loss ───────────────────────────────────────────────────────
-    total = cfg.GRPO_LAMBDA * pg_loss + cfg.KL_BETA * kl
-
-    return total, rewards_t.mean().item(), kl.item()
+    policy_loss = loss_per_candidate.mean()
+    # Compute log probs using reference model (no gradients)
+    with torch.no_grad():
+        ref_log_probs = []
+        for cand_indices in valid_candidates:
+            # Similar computation as above but with ref_model
+            log_prob_sum = 0.0
+            decoder_input = torch.tensor([[ref_model.decoder.bos_idx]], device=device)
+            
+            for token in cand_indices:
+                logits = ref_model.decoder(z_noisy, decoder_input)
+                logits_last = logits[0, -1, :]
+                probs = F.softmax(logits_last, dim=-1)
+                log_prob = torch.log(probs[token] + 1e-8)
+                log_prob_sum = log_prob_sum + log_prob
+                
+                decoder_input = torch.cat([
+                    decoder_input,
+                    torch.tensor([[token]], device=device)
+                ], dim=1)
+                
+                if token == ref_model.decoder.eos_idx:
+                    break
+            
+            ref_log_probs.append(log_prob_sum)
+        
+        ref_log_probs = torch.stack(ref_log_probs)
+    
+    # KL divergence: KL(π_θ || π_ref) = π_θ * log(π_θ / π_ref)
+    # Approximated by mean of (log π_θ - log π_ref)
+    kl_penalty = (new_log_probs - ref_log_probs.detach()).mean()
+    total_loss = cfg.GRPO_LAMBDA * policy_loss + cfg.KL_BETA * kl_penalty
+    
+    return total_loss, rewards_t.mean().item(), kl_penalty.item()
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +508,7 @@ def grpo_train_epoch(
     """
     total_loss, total_reward, total_kl, count = 0.0, 0.0, 0.0, 0
 
-    for batch in loader:
+    for batch_idx, batch in enumerate(loader):
         noisy = batch['noisy_padded'].to(device)
         aligned = batch['aligned_padded'].to(device)
         costs = batch['costs'].to(device)
@@ -490,7 +535,8 @@ def grpo_train_epoch(
         optimizer.step()
 
         total_loss += batch_loss.item()
-
+        if batch_idx % 50 == 0:
+            print(f"    batch {batch_idx}/{len(loader)}  reward={total_reward/max(count,1):.3f}", flush=True)
     n = max(count, 1)
     return total_loss / max(len(loader), 1), total_reward / n, total_kl / n
 
@@ -588,27 +634,6 @@ def main():
     # ── load Petri net ────────────────────────────────────────────────────
     print("\nLoading Petri net model...")
     net, mi, mf = pm4py.read_pnml(cfg.MODEL_PATH)
-    print("=== NET STRUCTURE DEBUG ===")
-    print(f"Places: {[p.name for p in net.places]}")
-    print(f"Initial marking: {mi}")
-    print(f"\nFirst 5 transitions:")
-    for t in list(net.transitions)[:5]:
-        print(f"  transition: {t.name} label={t.label}")
-        for arc in t.in_arcs:
-            print(f"    in_arc from: {arc.source.name} weight={arc.weight}")
-        for arc in t.out_arcs:
-            print(f"    out_arc to: {arc.target.name} weight={arc.weight}")
-
-    print(f"\nChecking enabled manually:")
-    for t in net.transitions:
-        can_fire = True
-        for arc in t.in_arcs:
-            tokens = mi.get(arc.source, 0)
-            if tokens < arc.weight:
-                can_fire = False
-                break
-        if can_fire:
-            print(f"  CAN FIRE: {t.label}")
 
     oracle      = PetriNetOracle(net, mi, mf)
     print(f"  transitions : {len(net.transitions)}  |  places : {len(net.places)}")

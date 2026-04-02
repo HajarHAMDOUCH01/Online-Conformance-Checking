@@ -18,8 +18,8 @@ from model import PrefixConformanceModel, NTXentLoss
 class Config:
     # paths
     DATASET_PATH = (
-        r"/content"
-        r"/confo_non_conform_prefixes_playout_dataset.pkl"
+        r"C:\Users\LENONVO\OneDrive\Desktop\graphs\sujet-CRAN\datasets\spesis"
+        r"\confo_non_conform_prefixes_playout_dataset.pkl"
     )
     CHECKPOINT_DIR = Path("checkpoints")
 
