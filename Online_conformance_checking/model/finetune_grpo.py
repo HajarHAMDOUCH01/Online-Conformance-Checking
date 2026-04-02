@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 
 import pm4py
-from pm4py.objects.petri_net.semantics import ClassicSemantics
+from pm4py.objects.petri_net.obj import Marking
 
 from dataset import PrefixConformanceDataset, collate_fn
 from model  import PrefixConformanceModel
@@ -146,7 +146,6 @@ class PetriNetOracle:
                     new_m = self._fire(m, trans)
                     self._step_cache[key] = (new_m, True)
         result_marking, success = self._step_cache[key]
-        from pm4py.objects.petri_net.obj import Marking
         return Marking(result_marking), success
     
 def prewarm_oracle(oracle: PetriNetOracle):
@@ -192,8 +191,6 @@ def prewarm_oracle(oracle: PetriNetOracle):
 # Token-level reward
 # ---------------------------------------------------------------------------
 
-
-# to do : fix this 
 def compute_sequence_reward(
     generated_labels: list[str],
     ground_truth_labels: list[str],
@@ -202,27 +199,37 @@ def compute_sequence_reward(
     cost_per_invalid: float = 1.0,
     cost_penalty_scale: float = 0.1
 ) -> float:
-    marking   = oracle.initial_marking()
+    marking_gt   = oracle.initial_marking() 
+    marking_pred = oracle.initial_marking() 
     generated_cost = 0
     validity_rewards   = []
+    kept_marking_gt = None
 
-    for t, token in enumerate(generated_labels):
-        enabled_set = oracle.enabled_labels(marking)
-
-        if token not in enabled_set:
+    for t, token in enumerate(generated_labels): 
+        enabled_set_pred = oracle.enabled_labels(marking_pred) 
+        if marking_pred == kept_marking_gt: 
+                marking_gt = kept_marking_gt 
+                kept_marking_gt = None
+        if token not in enabled_set_pred:
             validity_rewards.append(-1.0)
             generated_cost += cost_per_invalid
         else:
-            # token is enabled — check against ground truth
-            
-            if t < len(ground_truth_labels) and token == ground_truth_labels[t]:
+            gt_transition = ground_truth_labels[t] if t < len(ground_truth_labels) else 'end' 
+            marking_pred, _ = oracle.step(marking_pred, token) 
+            if gt_transition != 'end': 
+                marking_gt, _ = oracle.step(marking_gt, gt_transition) 
+            if gt_transition == 'end': 
+                validity_rewards.append(0.0) 
+
+            elif t < len(ground_truth_labels) and marking_gt == marking_pred:
                 validity_rewards.append(1.0)
-                # generated_cost += 0
+
             else:
                 validity_rewards.append(0.0)
                 generated_cost += cost_per_invalid
-            # advance marking
-            marking, _ = oracle.step(marking, token)
+                if marking_gt != marking_pred: 
+                    kept_marking_gt = marking_gt
+
     avg_validity = sum(validity_rewards) / max(len(validity_rewards), 1)
     cost_difference = generated_cost - optimal_cost
     if cost_difference > 0:

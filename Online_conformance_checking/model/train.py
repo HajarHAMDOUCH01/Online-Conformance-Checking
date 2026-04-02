@@ -38,7 +38,7 @@ class Config:
 
     # training
     BATCH_SIZE      = 64
-    EPOCHS          = 100
+    EPOCHS          = 5
     LR              = 3e-4
     WEIGHT_DECAY    = 1e-4
     LAMBDA_CONTRAST = 0.5       # weight of contrastive loss
@@ -344,6 +344,8 @@ def main():
         eos_idx=dataset.eos_idx
     ).to(device)
 
+    model.train()
+
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"  trainable parameters : {n_params:,}")
 
@@ -367,8 +369,8 @@ def main():
           f"{'Valid':>10}  {'V_rec':>8}  {'V_con':>8}  {'LR':>10}")
     print("-" * 80)
 
-    # ckpt_init = torch.load(best_ckpt, map_location=device)
-    # model.load_state_dict(ckpt_init["model"])
+    ckpt_init = torch.load(best_ckpt, map_location=device)
+    model.load_state_dict(ckpt_init["model"])
 
     for epoch in range(start_epoch + 1, cfg.EPOCHS + 1):
 
